@@ -1,0 +1,1811 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemba Walk</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState } = React;
+
+    function GembaWalk() {
+      const [activeTab, setActiveTab] = useState('action');
+      const [isAdminMode, setIsAdminMode] = useState(false);
+      const [showAdminModal, setShowAdminModal] = useState(false);
+      const [adminPassword, setAdminPassword] = useState('');
+      const [selectedDeptForAction, setSelectedDeptForAction] = useState(null);
+      
+      const [supervisors, setSupervisors] = useState(['생산관리팀', '품질관리팀', '안전환경팀']);
+      const [departments, setDepartments] = useState([
+        {name: '생산1팀', password: '1234'},
+        {name: '생산2팀', password: '1234'},
+        {name: '품질팀', password: '1234'},
+        {name: '설비팀', password: '1234'}
+      ]);
+      const [managers, setManagers] = useState({
+        '생산1팀': [{name: '김철수', email: 'kim@company.com'}, {name: '이영희', email: 'lee@company.com'}],
+        '생산2팀': [{name: '박민수', email: 'park@company.com'}, {name: '정대리', email: 'jung@company.com'}],
+        '품질팀': [{name: '최품질', email: 'choi@company.com'}, {name: '강검사', email: 'kang@company.com'}],
+        '설비팀': [{name: '윤설비', email: 'yoon@company.com'}]
+      });
+
+      const [issues, setIssues] = useState([
+        {
+          id: 1,
+          date: '2025-01-30',
+          supervisor: '생산관리팀',
+          department: '생산1팀',
+          manager: '김철수',
+          description: '바닥 미끄러움 주의 필요',
+          issuePhotos: [],
+          actionContent: '미끄럼 방지 테이프 부착 완료',
+          actionPhotos: [],
+          status: 'Complete',
+          improvedDate: '2025-01-31'
+        },
+        {
+          id: 2,
+          date: '2025-01-31',
+          supervisor: '안전환경팀',
+          department: '생산2팀',
+          manager: '',
+          description: '소화기 점검 필요',
+          issuePhotos: [],
+          actionContent: '',
+          actionPhotos: [],
+          status: 'Ongoing',
+          improvedDate: ''
+        }
+      ]);
+      
+      const [showModal, setShowModal] = useState(false);
+      const [newIssue, setNewIssue] = useState({ date: '', supervisor: '', department: '', manager: '', description: '', issuePhotos: [] });
+      const [selectedIds, setSelectedIds] = useState([]);
+      
+      const [newSupervisor, setNewSupervisor] = useState('');
+      const [newDepartment, setNewDepartment] = useState('');
+      const [newDeptPassword, setNewDeptPassword] = useState('');
+      const [newManager, setNewManager] = useState('');
+      const [newManagerEmail, setNewManagerEmail] = useState('');
+      const [selectedDeptForManager, setSelectedDeptForManager] = useState('');
+
+      const [showPasswordModal, setShowPasswordModal] = useState(false);
+      const [passwordInput, setPasswordInput] = useState('');
+      const [pendingDept, setPendingDept] = useState(null);
+
+      const [showEditPasswordModal, setShowEditPasswordModal] = useState(false);
+      const [editingDept, setEditingDept] = useState(null);
+      const [editDeptName, setEditDeptName] = useState('');
+      const [newPasswordInput, setNewPasswordInput] = useState('');
+
+      const [showEditManagerModal, setShowEditManagerModal] = useState(false);
+      const [editingManager, setEditingManager] = useState(null);
+      const [editManagerDept, setEditManagerDept] = useState('');
+      const [editManagerName, setEditManagerName] = useState('');
+      const [editManagerEmail, setEditManagerEmail] = useState('');
+
+      const [reportYear, setReportYear] = useState(new Date().getFullYear());
+      const [reportMonth, setReportMonth] = useState('All');
+      const [monthlyDetails, setMonthlyDetails] = useState({});
+
+      const [showPrintModal, setShowPrintModal] = useState(false);
+      const [printYear, setPrintYear] = useState(new Date().getFullYear());
+      const [printMonth, setPrintMonth] = useState('All');
+      const [showPreview, setShowPreview] = useState(false);
+      const [previewIssues, setPreviewIssues] = useState([]);
+      const [imageSizes, setImageSizes] = useState({});
+      const [currentPreviewPage, setCurrentPreviewPage] = useState(0);
+      const [resizingImage, setResizingImage] = useState(null);
+      const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, size: 100 });
+      const [viewerImage, setViewerImage] = useState(null); // 이미지 뷰어
+
+      const styles = {
+        container: { minHeight: '100vh', background: 'linear-gradient(135deg, #1e1e2f 0%, #0f0f1a 100%)', color: 'white', padding: 24 },
+        header: { marginBottom: 24 },
+        title: { fontSize: 28, fontWeight: 700, background: 'linear-gradient(90deg, #a5b4fc, #818cf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' },
+        tabBtn: (active) => ({ padding: '12px 24px', border: 'none', background: active ? 'rgba(99, 102, 241, 0.3)' : 'transparent', color: active ? '#a5b4fc' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 14, fontWeight: 500, borderBottom: active ? '2px solid #6366f1' : '2px solid transparent', transition: 'all 0.2s' }),
+        statCard: { background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 20, textAlign: 'center' },
+        statLabel: { fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 8 },
+        statValue: (color) => ({ fontSize: 32, fontWeight: 700, color }),
+        btnPrimary: { padding: '10px 20px', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: 'none', borderRadius: 8, color: 'white', cursor: 'pointer', fontWeight: 500, fontSize: 14 },
+        btnSecondary: { padding: '10px 20px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, color: 'white', cursor: 'pointer', fontWeight: 500, fontSize: 14 },
+        btnDanger: { padding: '10px 20px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', borderRadius: 8, color: 'white', cursor: 'pointer', fontWeight: 500, fontSize: 14 },
+        table: { width: '100%', borderCollapse: 'collapse', background: 'rgba(255,255,255,0.03)', borderRadius: 12, overflow: 'hidden' },
+        th: { padding: '14px 12px', textAlign: 'left', background: 'rgba(99, 102, 241, 0.2)', fontSize: 13, fontWeight: 600, color: '#a5b4fc', borderBottom: '1px solid rgba(255,255,255,0.1)' },
+        td: { padding: '12px', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13, verticalAlign: 'top' },
+        inlineInput: { width: '100%', padding: '8px 10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: 'white', fontSize: 13 },
+        modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+        modalContent: { background: 'linear-gradient(135deg, #1e1e2f, #2d2d44)', padding: 32, borderRadius: 16, width: '90%', maxWidth: 500, maxHeight: '80vh', overflowY: 'auto' },
+        input: { width: '100%', padding: '12px 16px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, color: 'white', fontSize: 14, marginBottom: 16 },
+        textarea: { width: '100%', padding: '12px 16px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, color: 'white', fontSize: 14, marginBottom: 16, minHeight: 100, resize: 'vertical' },
+        settingsCard: { background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 24, marginBottom: 24 },
+        settingsInput: { padding: '10px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, color: 'white', fontSize: 14 },
+        inputRow: { display: 'flex', gap: 12, marginBottom: 16 },
+        tag: { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'rgba(99, 102, 241, 0.2)', borderRadius: 20, fontSize: 13, margin: '4px' },
+        actionBar: { display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, padding: 16, background: 'rgba(99, 102, 241, 0.1)', borderRadius: 12 },
+        photoGrid: { display: 'flex', gap: 8, flexWrap: 'wrap' },
+        photoThumb: { width: 60, height: 60, objectFit: 'cover', borderRadius: 8, border: '2px solid rgba(255,255,255,0.2)', cursor: 'pointer', transition: 'transform 0.2s' },
+        statusBadge: (status) => {
+          const colors = { 'Ongoing': '#f59e0b', 'Under Review': '#6366f1', 'Complete': '#10b981' };
+          return { padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500, background: `${colors[status]}20`, color: colors[status], border: `1px solid ${colors[status]}40` };
+        },
+        deptCard: { background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 20, cursor: 'pointer', transition: 'all 0.2s', border: '2px solid transparent' },
+        deptCardActive: { background: 'rgba(99, 102, 241, 0.2)', borderColor: '#6366f1' },
+        selectOption: { background: '#1e1e3f', color: 'white' }
+      };
+
+      const addIssue = () => {
+        if (!newIssue.date || !newIssue.supervisor || !newIssue.department || !newIssue.description) {
+          alert('필수 항목을 입력해주세요.');
+          return;
+        }
+        // Target Date = 일자 + 30일
+        const issueDate = new Date(newIssue.date);
+        issueDate.setDate(issueDate.getDate() + 30);
+        const targetDate = issueDate.toISOString().split('T')[0];
+        
+        setIssues([...issues, { ...newIssue, id: Date.now(), actionContent: '', actionPhotos: [], status: 'Ongoing', improvedDate: '', targetDate }]);
+        setNewIssue({ date: '', supervisor: '', department: '', manager: '', description: '', issuePhotos: [] });
+        setShowModal(false);
+      };
+
+      const updateIssueField = (id, field, value) => {
+        setIssues(issues.map(issue => issue.id === id ? { ...issue, [field]: value } : issue));
+      };
+
+      // 보고 버튼 클릭 시 Under Review로 변경
+      const submitReport = (id) => {
+        const issue = issues.find(i => i.id === id);
+        if (!issue.actionContent || issue.actionContent.trim() === '') {
+          alert('조치내용을 입력해주세요.');
+          return;
+        }
+        if (!issue.actionPhotos || issue.actionPhotos.length === 0) {
+          alert('조치사진을 등록해주세요.');
+          return;
+        }
+        setIssues(issues.map(issue => issue.id === id ? { ...issue, status: 'Under Review' } : issue));
+        alert('보고가 완료되었습니다.');
+      };
+
+      const handlePhotoUpload = (id, field, files) => {
+        const photos = Array.from(files).map(file => URL.createObjectURL(file));
+        setIssues(issues.map(issue => issue.id === id ? { ...issue, [field]: [...issue[field], ...photos] } : issue));
+      };
+
+      const handleNewIssuePhoto = (files) => {
+        const photos = Array.from(files).map(file => URL.createObjectURL(file));
+        setNewIssue({ ...newIssue, issuePhotos: [...newIssue.issuePhotos, ...photos] });
+      };
+
+      const toggleSelect = (id) => {
+        if (selectedIds.includes(id)) {
+          setSelectedIds(selectedIds.filter(i => i !== id));
+        } else if (selectedIds.length < 2) {
+          setSelectedIds([...selectedIds, id]);
+        }
+      };
+
+      const mergeIssues = () => {
+        if (selectedIds.length !== 2) return;
+        const [first, second] = selectedIds.map(id => issues.find(i => i.id === id));
+        const merged = {
+          ...first,
+          description: first.description + '\n---\n' + second.description,
+          issuePhotos: [...first.issuePhotos, ...second.issuePhotos],
+          actionContent: (first.actionContent || '') + (second.actionContent ? '\n---\n' + second.actionContent : ''),
+          actionPhotos: [...first.actionPhotos, ...second.actionPhotos]
+        };
+        setIssues(issues.filter(i => i.id !== second.id).map(i => i.id === first.id ? merged : i));
+        setSelectedIds([]);
+      };
+
+      const deleteSelected = () => {
+        if (confirm('선택한 항목을 삭제하시겠습니까?')) {
+          setIssues(issues.filter(i => !selectedIds.includes(i.id)));
+          setSelectedIds([]);
+        }
+      };
+
+      const addSupervisor = () => {
+        if (newSupervisor.trim() && !supervisors.includes(newSupervisor.trim())) {
+          setSupervisors([...supervisors, newSupervisor.trim()]);
+          setNewSupervisor('');
+        }
+      };
+
+      const addDepartment = () => {
+        if (newDepartment.trim() && !departments.find(d => d.name === newDepartment.trim())) {
+          setDepartments([...departments, {name: newDepartment.trim(), password: newDeptPassword || '1234'}]);
+          setManagers({...managers, [newDepartment.trim()]: []});
+          setNewDepartment('');
+          setNewDeptPassword('');
+        }
+      };
+
+      const addManager = () => {
+        if (newManager.trim() && selectedDeptForManager) {
+          const newMgr = { name: newManager.trim(), email: newManagerEmail.trim() };
+          setManagers({...managers, [selectedDeptForManager]: [...(managers[selectedDeptForManager] || []), newMgr]});
+          setNewManager('');
+          setNewManagerEmail('');
+        }
+      };
+
+      const removeSupervisor = (s) => setSupervisors(supervisors.filter(sup => sup !== s));
+      const removeDepartment = (deptName) => {
+        setDepartments(departments.filter(d => d.name !== deptName));
+        const newManagers = {...managers};
+        delete newManagers[deptName];
+        setManagers(newManagers);
+      };
+      const removeManager = (dept, mgrName) => setManagers({...managers, [dept]: managers[dept].filter(m => m.name !== mgrName)});
+
+      const handleDeptClick = (dept) => {
+        setPendingDept(dept);
+        setPasswordInput('');
+        setShowPasswordModal(true);
+      };
+
+      const verifyPassword = () => {
+        if (pendingDept && passwordInput === pendingDept.password) {
+          setSelectedDeptForAction(pendingDept.name);
+          setShowPasswordModal(false);
+          setPasswordInput('');
+          setPendingDept(null);
+        } else {
+          alert('비밀번호가 틀렸습니다.');
+        }
+      };
+
+      const openEditPasswordModal = (dept) => {
+        setEditingDept(dept);
+        setEditDeptName(dept.name);
+        setNewPasswordInput(dept.password);
+        setShowEditPasswordModal(true);
+      };
+
+      const saveNewPassword = () => {
+        if (editingDept && editDeptName.trim()) {
+          const oldName = editingDept.name;
+          const newName = editDeptName.trim();
+          
+          setDepartments(departments.map(d => d.name === oldName ? {...d, name: newName, password: newPasswordInput} : d));
+          
+          if (oldName !== newName) {
+            const newManagers = {...managers};
+            newManagers[newName] = newManagers[oldName] || [];
+            delete newManagers[oldName];
+            setManagers(newManagers);
+            
+            setIssues(issues.map(issue => issue.department === oldName ? {...issue, department: newName} : issue));
+          }
+          
+          setShowEditPasswordModal(false);
+          setEditingDept(null);
+          setEditDeptName('');
+          setNewPasswordInput('');
+        }
+      };
+
+      const openEditManagerModal = (dept, mgr) => {
+        setEditingManager(mgr);
+        setEditManagerDept(dept);
+        setEditManagerName(mgr.name);
+        setEditManagerEmail(mgr.email);
+        setShowEditManagerModal(true);
+      };
+
+      const saveEditManager = () => {
+        if (editingManager && editManagerName.trim()) {
+          const oldName = editingManager.name;
+          const newName = editManagerName.trim();
+          
+          setManagers({
+            ...managers,
+            [editManagerDept]: managers[editManagerDept].map(m => 
+              m.name === oldName ? {name: newName, email: editManagerEmail.trim()} : m
+            )
+          });
+          
+          if (oldName !== newName) {
+            setIssues(issues.map(issue => 
+              issue.department === editManagerDept && issue.manager === oldName 
+                ? {...issue, manager: newName} 
+                : issue
+            ));
+          }
+          
+          setShowEditManagerModal(false);
+          setEditingManager(null);
+          setEditManagerDept('');
+          setEditManagerName('');
+          setEditManagerEmail('');
+        }
+      };
+
+      const currentYear = reportYear;
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'];
+
+      const getMonthStats = (monthIndex) => {
+        const monthIssues = issues.filter(i => {
+          const d = new Date(i.date);
+          return d.getFullYear() === currentYear && d.getMonth() === monthIndex;
+        });
+        const total = monthIssues.length;
+        const closed = monthIssues.filter(i => i.status === 'Complete').length;
+        const open = total - closed;
+        const closeRate = total > 0 ? Math.round((closed / total) * 100) : 0;
+        return { total, closed, open, closeRate };
+      };
+
+      const getYearlyTotal = () => {
+        const yearIssues = issues.filter(i => new Date(i.date).getFullYear() === currentYear);
+        const total = yearIssues.length;
+        const closed = yearIssues.filter(i => i.status === 'Complete').length;
+        const open = total - closed;
+        return { total, closed, open };
+      };
+
+      const handlePrintReport = () => {
+        downloadReport();
+      };
+
+      const openPreview = () => {
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthIndex = monthNames.indexOf(printMonth);
+        
+        const filtered = issues.filter(i => {
+          const d = new Date(i.date);
+          if (printMonth === 'All') return d.getFullYear() === printYear;
+          return d.getFullYear() === printYear && d.getMonth() === monthIndex;
+        });
+        
+        // 이미지 크기 초기화 (각 사진별 개별 크기)
+        const sizes = {};
+        filtered.forEach((issue, idx) => {
+          sizes[issue.id] = { 
+            before0Size: 100, before1Size: 100, 
+            after0Size: 100, after1Size: 100 
+          };
+        });
+        setImageSizes(sizes);
+        setPreviewIssues(filtered);
+        setCurrentPreviewPage(0);
+        setShowPrintModal(false);
+        setShowPreview(true);
+      };
+
+      const updateImageSize = (issueId, type, value) => {
+        setImageSizes(prev => ({
+          ...prev,
+          [issueId]: {
+            ...prev[issueId],
+            [type]: parseInt(value)
+          }
+        }));
+      };
+
+      // 이미지 리사이즈 시작
+      const handleResizeStart = (e, issueId, type, photoIdx) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const sizeKey = type + photoIdx + 'Size';
+        const currentSize = imageSizes[issueId]?.[sizeKey] || 100;
+        setResizingImage({ issueId, type, photoIdx, sizeKey });
+        setResizeStart({ x: e.clientX, y: e.clientY, size: currentSize });
+      };
+
+      // 이미지 리사이즈 중
+      const handleResizeMove = (e) => {
+        if (!resizingImage) return;
+        const deltaX = e.clientX - resizeStart.x;
+        const deltaY = e.clientY - resizeStart.y;
+        const delta = Math.max(deltaX, deltaY);
+        const newSize = Math.min(250, Math.max(20, resizeStart.size + delta / 2));
+        setImageSizes(prev => ({
+          ...prev,
+          [resizingImage.issueId]: {
+            ...prev[resizingImage.issueId],
+            [resizingImage.sizeKey]: Math.round(newSize)
+          }
+        }));
+      };
+
+      // 이미지 리사이즈 종료
+      const handleResizeEnd = () => {
+        setResizingImage(null);
+      };
+
+      const eatonLogo = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCAA5ALUDASIAAhEBAxEB/8QAHAAAAgIDAQEAAAAAAAAAAAAAAAYEBwIDBQEI/8QASBAAAQMCAwMFCA8GBwAAAAAAAQACAwQRBRIhBgcxE0FRYXEUIjZxgZOhshYWFzJCVFV0g7GzwcLR0iMkM0Ji8TRDcpKU0/D/xAAbAQEAAgMBAQAAAAAAAAAAAAAABAUCAwcGAf/EADARAAEDAwAHBgYDAAAAAAAAAAEAAgMEBREGEiExMUFRYXGBobHBFDQ1ktHhIlKR/9oADAMBAAIRAxEAPwD833LgH2WuAf4P41YuVvQOxV3uW/m30P41Yq6Xo/8ATo/H7iua6QfUJPD7QvMregdiMregdiTfY/eJ8uYZ/sH/AFqDj/t6wvCZ6ysxygMDBZwjYMxubWH7Ma69K2SXTZtL3QvAHYPytcds2jg1szCT2n8JI2qrvZLaGtrAbsfKQz/SNG+gBc0AkEgE249S8TlslgXduxeN1ZZeR7Q2HTW8ffm3j0C57DDJXTuxxOT6n9LoU00dDA3PAYHoP2mXc+Admai4B/fHeoxOeVvQOxUZg20mM4PSupsPqxDE55kLeSa7viAL6g8wCdN2+0mM4xjk1NiFWJom0zpA3kmt74OaL6AcxK9bZr1T7OKlwdbhyx6+y8leLNUbSWqyNXjzz6e6f8begdirjbjbeVlTJh2CuawMJbJUgXJPOG9XX2Jr28xJ+F7MVU8Ti2WQCKMjiC7S/kFz5FSK+aR3SSDFPEcEjJPZ0X3Ry2Rz5qJRkA4A7eqznmlnldLPK+WR3vnPcST5SsE07I7GVeO0xrJJxSUtyGPLMznkcbC4061r2v2Rq9n2MqBMKqlc7LygblLT0Ea9q8q621ew+ILDq9ffr4r1TbjS7b4cPGt09ungrD3agHYrD7gf5n2jkxZW9A7EvbtfAnD/AKT7Ry7j6mJlbFSOJEsrHvZ0ENLQfWC6RbyBRxE/1b6Bc4uAJrJQP7O9Sq13w0AixSkxBjbNnjLHW+E0/kR2J+2XaPazheg/wcPN/QFyd59D3ZspNI1t30r2zDxcD6CT5F19l/BnC/mcPqBQKWm2NzmI4OAP581OqqnbWyIHi0kfjyVc74ABtNT2Fv3NvrvSWnTfD4TU/wAzb670lrxV5+el710uzfIxdyEIQqxWaEIQiIQhCIrG3Lfzb6H8asVV1uW/m30P41Yq6Zo/9Oj8fuK5rpB9Qk8PtCXPbzsv8pHzEn6Up7ydp8PxbD6aiwuoMzOUMkxyObaws0agX4nsT97A4H8i4d/xWfkqg24fSu2nrI6KnhgghdyTWxMDRduhNh13VXfZ62GlLZXNw7duBz15lWVjgo5qoOia7Ld+8jHTkFxF2sM2pxzDaFtFRVbYoG3s3kWO4m51IuVo2Xw/2U2go6FzbskkBkH9A1d6AVbPtM2Z+Smecf8AmqO02yrqWulp36uN2ckeivbtc6SmcIqhmtnfjAPqqTPFOm57wmqPmbvXYtO83A6XB8RpX0EAhpp4iMoJPftOvHqIW7c94TVHzN3rsXyhpn0t0ZC/iCldUsqrW+ZnAj3TLvea52y8JbwbVsLvFlcPrIVTK+tpcMbi+B1WHkgOkZ3hPM4atPaFRNTDLT1EkE7HRyxuLXtPEEcymaU07m1Il5OHmFE0XqGupjFzafIq7dhZoJ9k8ONOQQyEMcBzOGjvSou8ueCLY+rZMRmlLWRtPEuzA6eKxPkVU4PjeK4Q5xw6sfAH++bYOaeuxuLrDF8WxHFpmy4jVvnc3RoNgG+IDQLa/SON1DsNQ62NXs4Yz+sLSzR2Rtdt9cauc9vHOP3lW3u18CcP+k+0co22Nb3BtVs1MTZjpJon9FnZG/ffyKTu18CcP+k+0cl3fOS12EOaSCDMQRzfw1cVEphs7JBxAYf8LVUU8QmvD4zwJeP9Dk/1kEdVSTU0ovHKxzHDqIsVowOnkpMFoaWUASQ00cb7dIaAfqXuC1gxDCKStBH7aFrzbmJGo7bqWrxgY8iUcx5HeqR5ewGI8j5jcqo3w+E1P8zb670lp03w+E1P8zb670lrmV5+el710uzfIxdyEIQqxWaEIQiIQhCIu1sxtJX7Pd0dxR07+6MuflWk2y3taxHwiuz7pGO/FsP82/8AUkxCnQ3KrgYI45CAOSgzW2lmeXyMBJ5pz90jHfi2H+bf+pJ0j3SSOke4ue4lzieclYoWuorZ6nG1cThbaejgps7JoGV0tncYqcDrzW0sUEkuQsHKtJABtqLEa6Jh90jHfi2H+bf+pK3c45PRsmfIHA30JNrDh0HpWkwyAA5QQbAEEG97/kVlBcKmnZqRPICwnt9NUO15WAldraXarEMfpYqetgpGCJ+dromODuFrauOn5KJs3jdXgNc+so2QvkfEYyJWkixIPMRroFA5GS7gWgZSQbkWBC9FPLexaPfZffDU9XasHVk7pRMXfy6rNtHA2Iwhv8eibvdIx34th/m3/qXA2hxmbG6oVVTS0sU9rOfC1zS/ovclQDDJlzBuhsQLgmx4aLGSJ8YBcBYkgWcDw8S2T3GpqGakryR2rXBb6aB+vEwA9iwQpUlMAMoa8P70Ak6OJ4gaLSyGR9iALEXBJA57KEpqY8E22xbCMLhw6mgo3RRZspkY4u1cXG9nDnKhbT7SV+0Pc/dsdOzufNk5JpF81r3uT8ELlCF5aLNtzklwA42+5ecjJYnKBa9xcX04qY+vqXxbFzzq7hju4KIygpmS7ZrBrbznv4piwPbXF8IwyLD6eKkkiivlMrHF2pJto4dKm+6RjvxbD/Nv/UlEwSjiAON++Gluno4hDYtJQ6+aMcB03A+9bGXWsjaGtkIAWp9qo5HFzowSVO2kxurx6uZWVjIWSMiEYETSBYEnnJ11K5ikvpmh7QC53eXdb4VyLDyrXyEt+DToTfMLadahSyvleXvOSVNjiZEwMYMALUhbxTOc9jW84bckganXRYPicC8tacjbG5PMeCwWa1oW0wPAsW2OpJLha3D61lJTva8hovlGtyOIFzbpRFoQhCIhCEIiEIQiLfywNQ55zZCCAOcAiwXona1hY0HRoDCenXX0lR0IilmpYXv0c1rhpoDz3P8A7qCwM4LgbHTMfKRYfco6ERSopgZtBzttc20aP7LCYxtdEwXLWjvvGTr6LLQhEUruhge43eQ5xcSRwNjawv1rxs0bdAHkBuWxAs4dfRqoyERSBOy7BlOUOaSOoD+69NQ0xtBzXtYgAdNzqoyERShPHygcc5IFico78X4Edi108oidI7Lq5tm25jcEfUtKERSWVDWshblPee+PTqbdl1g6VoiMbAbWtc8+tz93YtKERSjPGXZrOBa5xaPGLDssENqWAAZD7wA9bha3k0UVCIpHLRuZkfnt3uo4m1yfSVk+pDmG2YOObSw5ydb+IqKhEQhCERf/2Q==';
+
+      const downloadReport = async () => {
+        const { jsPDF } = window.jspdf;
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthIndex = monthNames.indexOf(printMonth);
+        
+        // 미리보기에서 온 경우 previewIssues 사용, 아니면 새로 필터링
+        let filteredIssues;
+        if (previewIssues.length > 0) {
+          filteredIssues = previewIssues;
+        } else {
+          filteredIssues = issues.filter(i => {
+            const d = new Date(i.date);
+            if (printMonth === 'All') return d.getFullYear() === printYear;
+            return d.getFullYear() === printYear && d.getMonth() === monthIndex;
+          });
+          // 기본 이미지 크기 설정 (개별 사진별)
+          const sizes = {};
+          filteredIssues.forEach((issue) => {
+            sizes[issue.id] = { 
+              before0Size: 100, before1Size: 100, 
+              after0Size: 100, after1Size: 100 
+            };
+          });
+          setImageSizes(sizes);
+        }
+
+        // Finding# 생성 함수
+        const generateFindingNumber = (issue, idx) => {
+          const d = new Date(issue.date);
+          const yy = String(d.getFullYear()).slice(-2);
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const num = String(idx + 1).padStart(2, '0');
+          return yy + mm + '-' + num;
+        };
+
+        // 월별 통계 계산
+        const getMonthData = (idx) => {
+          const monthIssues = issues.filter(i => {
+            const d = new Date(i.date);
+            return d.getFullYear() === printYear && d.getMonth() === idx;
+          });
+          const total = monthIssues.length;
+          const closed = monthIssues.filter(i => i.status === 'Complete').length;
+          const open = total - closed;
+          const ratio = total > 0 ? Math.round((closed / total) * 100) + '%' : '';
+          return { total, closed, open, ratio };
+        };
+
+        const yearTotal = issues.filter(i => new Date(i.date).getFullYear() === printYear).length;
+        const yearClosed = issues.filter(i => new Date(i.date).getFullYear() === printYear && i.status === 'Complete').length;
+        const yearOpen = yearTotal - yearClosed;
+
+        // 부서별 통계
+        const getDeptStats = (deptName) => {
+          const deptIssues = filteredIssues.filter(i => i.department === deptName);
+          const total = deptIssues.length;
+          const closed = deptIssues.filter(i => i.status === 'Complete').length;
+          return {
+            ofi: total,
+            open: total - closed,
+            closed: closed,
+            rate: total > 0 ? Math.round((closed / total) * 100) + '%' : '0%'
+          };
+        };
+
+        const allOfi = filteredIssues.length;
+        const allClosed = filteredIssues.filter(i => i.status === 'Complete').length;
+        const allOpen = allOfi - allClosed;
+        const allRate = allOfi > 0 ? Math.round((allClosed / allOfi) * 100) + '%' : '0%';
+
+        // 요약 페이지 HTML
+        const summaryHTML = `
+          <div id="pdf-content" style="width: 1100px; padding: 30px; background: white; font-family: Arial, sans-serif; position: relative; box-sizing: border-box;">
+            <h1 style="color: #1e3a5f; font-size: 32px; font-weight: 800; margin-bottom: 25px;">EHS & Lean Gemba Walk Status</h1>
+            
+            <h3 style="font-size: 14px; margin: 20px 0 10px 0; font-weight: 600;">EHS Gemba Audit status</h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 30px;">
+              <thead>
+                <tr>
+                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #ccc; width: 70px;">Month</th>
+                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #ccc; width: 100px;">Finding Total</th>
+                  <th colspan="2" style="background: #be185d; color: white; padding: 8px; border: 1px solid #ccc;">Corrective Action</th>
+                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #ccc; width: 100px;">Close Ratio</th>
+                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #ccc;">Detail (Open issues)</th>
+                </tr>
+                <tr>
+                  <th style="background: #be185d; color: white; padding: 8px; border: 1px solid #ccc; width: 80px;">Close #</th>
+                  <th style="background: #be185d; color: white; padding: 8px; border: 1px solid #ccc; width: 80px;">Open #</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'].map((month, idx) => {
+                  const data = getMonthData(idx);
+                  const detailKey = printYear + '-' + month;
+                  return '<tr><td style="border: 1px solid #ccc; padding: 10px 8px; font-weight: 600;">' + month + '</td><td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center;">' + (data.total || '') + '</td><td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center;">' + (data.closed || '') + '</td><td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center;">' + (data.open || '') + '</td><td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center;">' + data.ratio + '</td><td style="border: 1px solid #ccc; padding: 10px 8px; font-size: 12px; color: #666;">' + (monthlyDetails[detailKey] || '') + '</td></tr>';
+                }).join('')}
+                <tr style="background: #fef9c3;">
+                  <td style="border: 1px solid #ccc; padding: 10px 8px; font-weight: 700;">Total</td>
+                  <td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; font-weight: 700;">${yearTotal}</td>
+                  <td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; font-weight: 700;">${yearClosed}</td>
+                  <td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; font-weight: 700;">${yearOpen}</td>
+                  <td style="border: 1px solid #ccc; padding: 10px 8px;"></td>
+                  <td style="border: 1px solid #ccc; padding: 10px 8px;"></td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h3 style="font-size: 14px; margin: 25px 0 10px 0; color: #dc2626; font-weight: 700;">Open status for ${printMonth === 'All' ? printYear + ' All' : printMonth + ' ' + printYear}</h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <thead>
+                <tr>
+                  <th style="background: #fef9c3; padding: 12px 8px; border: 1px solid #ccc; width: 120px;"></th>
+                  ${departments.map(d => '<th style="background: #7c3aed; color: white; padding: 12px 8px; border: 1px solid #ccc;">' + d.name + '</th>').join('')}
+                  <th style="background: #7c3aed; color: white; padding: 12px 8px; border: 1px solid #ccc;">All</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="background: #fef9c3; border: 1px solid #ccc; padding: 10px 8px; font-weight: 600;"># of OFI</td>
+                  ${departments.map(d => '<td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center;">' + getDeptStats(d.name).ofi + '</td>').join('')}
+                  <td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; font-weight: 700;">${allOfi}</td>
+                </tr>
+                <tr>
+                  <td style="background: #fef9c3; border: 1px solid #ccc; padding: 10px 8px; font-weight: 600;">Open</td>
+                  ${departments.map(d => '<td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center;">' + getDeptStats(d.name).open + '</td>').join('')}
+                  <td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; font-weight: 700;">${allOpen}</td>
+                </tr>
+                <tr>
+                  <td style="background: #fef9c3; border: 1px solid #ccc; padding: 10px 8px; font-weight: 600;">Closed</td>
+                  ${departments.map(d => '<td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center;">' + getDeptStats(d.name).closed + '</td>').join('')}
+                  <td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; font-weight: 700;">${allClosed}</td>
+                </tr>
+                <tr>
+                  <td style="background: #fef9c3; border: 1px solid #ccc; padding: 10px 8px; font-weight: 600;">Close Rate</td>
+                  ${departments.map(d => '<td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; color: #dc2626; font-weight: 600;">' + getDeptStats(d.name).rate + '</td>').join('')}
+                  <td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; font-weight: 700; color: #dc2626;">${allRate}</td>
+                </tr>
+              </tbody>
+            </table>
+            
+            <!-- 하단 페이지 번호 -->
+            <div style="text-align: right; margin-top: 30px;">
+              <span style="font-size: 12px; color: #6b7280;">1</span>
+            </div>
+          </div>
+        `;
+
+        // 개별 이슈 페이지 HTML 생성 함수
+        const createIssuePageHTML = (issue, idx, pageNum, totalPages) => {
+          const findingNum = generateFindingNumber(issue, idx);
+          const locationDept = issue.department + ' – ' + (issue.manager || 'N/A');
+          
+          // 이미지 크기 가져오기
+          const sizes = imageSizes[issue.id] || { beforeSize: 100, afterSize: 100 };
+          
+          // 이미지 렌더링 함수 (1장 또는 2장, 개별 크기, 첫 번째가 위로)
+          const renderPhotos = (photos, type, sizes) => {
+            const baseSize = 280;
+            
+            if (!photos || photos.length === 0) {
+              return '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 16px;">No Image</div>';
+            } else if (photos.length === 1) {
+              const sizePercent = sizes[type + '0Size'] || 100;
+              const imgSize = Math.round(baseSize * sizePercent / 100);
+              return '<div style="display: flex; align-items: center; justify-content: center; height: 100%;"><img src="' + photos[0] + '" style="max-width: ' + imgSize + 'px; max-height: ' + imgSize + 'px; object-fit: contain;" /></div>';
+            } else {
+              // 2장: 개별 크기, 첫 번째가 위로 (z-index 높게)
+              const size0 = sizes[type + '0Size'] || 100;
+              const size1 = sizes[type + '1Size'] || 100;
+              const img0Size = Math.round(baseSize * 0.6 * size0 / 100);
+              const img1Size = Math.round(baseSize * 0.6 * size1 / 100);
+              return '<div style="position: relative; width: 100%; height: 100%;">' +
+                '<div style="position: absolute; top: 0; left: 0; z-index: 5;"><img src="' + photos[0] + '" style="max-width: ' + img0Size + 'px; max-height: ' + img0Size + 'px; object-fit: contain; box-shadow: 2px 2px 8px rgba(0,0,0,0.3);" /></div>' +
+                '<div style="position: absolute; bottom: 0; right: 0; z-index: 2;"><img src="' + photos[1] + '" style="max-width: ' + img1Size + 'px; max-height: ' + img1Size + 'px; object-fit: contain; box-shadow: 2px 2px 8px rgba(0,0,0,0.3);" /></div>' +
+                '</div>';
+            }
+          };
+          
+          return `
+            <div id="issue-page-${idx}" style="width: 1100px; padding: 30px 40px; background: white; font-family: Arial, sans-serif; box-sizing: border-box;">
+              <!-- 제목 -->
+              <h1 style="color: #1e3a5f; font-size: 32px; font-weight: 800; margin: 0 0 25px 0;">Safety / 5S+</h1>
+              
+              <!-- 상단 정보 테이블 -->
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 15px;">
+                <tr>
+                  <td style="background: white; padding: 12px 18px; width: 15%; font-weight: 700; border: 1px solid #ccc;">Finding#</td>
+                  <td style="background: white; padding: 12px 18px; width: 35%; border: 1px solid #ccc;">${findingNum}</td>
+                  <td style="background: white; padding: 12px 18px; width: 22%; font-weight: 700; border: 1px solid #ccc;">Location/Dept/Response</td>
+                  <td style="background: white; padding: 12px 18px; width: 28%; border: 1px solid #ccc;">${locationDept}</td>
+                </tr>
+              </table>
+              
+              <!-- Before/After 섹션 -->
+              <table style="width: 100%; border-collapse: collapse; overflow: visible;">
+                <tr>
+                  <th style="background: #be185d; color: white; padding: 16px; width: 50%; font-size: 18px; font-weight: 600; border: 1px solid #ccc;">Before</th>
+                  <th style="background: #10b981; color: white; padding: 16px; width: 50%; font-size: 18px; font-weight: 600; border: 1px solid #ccc;">After</th>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 15px; vertical-align: top; height: 380px; background: white; position: relative; overflow: visible;">
+                    ${renderPhotos(issue.issuePhotos, 'before', sizes)}
+                  </td>
+                  <td style="border: 1px solid #ccc; padding: 15px; vertical-align: top; height: 380px; background: white; position: relative; overflow: visible;">
+                    ${renderPhotos(issue.actionPhotos, 'after', sizes)}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 18px 22px; vertical-align: top; height: 120px; font-size: 15px; background: white; line-height: 1.7;">${issue.description || ''}</td>
+                  <td style="border: 1px solid #ccc; padding: 18px 22px; vertical-align: top; height: 120px; font-size: 15px; background: white; line-height: 1.7;">${issue.actionContent || ''}</td>
+                </tr>
+              </table>
+              
+              <!-- 하단 페이지 번호 -->
+              <div style="text-align: right; margin-top: 20px;">
+                <span style="font-size: 14px; color: #6b7280;">${pageNum}</span>
+              </div>
+            </div>
+          `;
+        };
+
+        // 임시 컨테이너 생성
+        const tempDiv = document.createElement('div');
+        tempDiv.style.position = 'absolute';
+        tempDiv.style.left = '-9999px';
+        tempDiv.style.top = '0';
+        document.body.appendChild(tempDiv);
+
+        try {
+          const doc = new jsPDF('l', 'mm', 'a4');
+          const pageWidth = doc.internal.pageSize.getWidth();
+          const pageHeight = doc.internal.pageSize.getHeight();
+          
+          // 1. 요약 페이지 생성
+          tempDiv.innerHTML = summaryHTML;
+          const summaryElement = tempDiv.querySelector('#pdf-content');
+          const summaryCanvas = await html2canvas(summaryElement, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff'
+          });
+          
+          const summaryImg = summaryCanvas.toDataURL('image/png');
+          const imgWidth = pageWidth - 20;
+          const imgHeight = (summaryCanvas.height * imgWidth) / summaryCanvas.width;
+          doc.addImage(summaryImg, 'PNG', 10, 10, imgWidth, Math.min(imgHeight, pageHeight - 20));
+
+          // 2. 각 이슈별 페이지 생성
+          const totalPages = filteredIssues.length + 1;
+          for (let i = 0; i < filteredIssues.length; i++) {
+            doc.addPage();
+            
+            const issueHTML = createIssuePageHTML(filteredIssues[i], i, i + 2, totalPages);
+            tempDiv.innerHTML = issueHTML;
+            const issueElement = tempDiv.querySelector('#issue-page-' + i);
+            
+            const issueCanvas = await html2canvas(issueElement, {
+              scale: 2,
+              useCORS: true,
+              backgroundColor: '#ffffff'
+            });
+            
+            const issueImg = issueCanvas.toDataURL('image/png');
+            const issueImgWidth = pageWidth - 10;
+            const issueImgHeight = (issueCanvas.height * issueImgWidth) / issueCanvas.width;
+            doc.addImage(issueImg, 'PNG', 5, 5, issueImgWidth, Math.min(issueImgHeight, pageHeight - 10));
+          }
+
+          doc.save('Gemba_Walk_Report_' + printYear + '_' + printMonth + '.pdf');
+        } catch (error) {
+          console.error('PDF 생성 오류:', error);
+          alert('PDF 생성 중 오류가 발생했습니다.');
+        } finally {
+          document.body.removeChild(tempDiv);
+        }
+        
+        setShowPrintModal(false);
+        setPreviewIssues([]);
+      };
+
+      // 엑셀 템플릿 다운로드
+      const downloadTemplate = () => {
+        const wb = XLSX.utils.book_new();
+        
+        const supervisorData = [['주관명'], ['예시: 생산관리팀'], ['예시: 품질관리팀']];
+        const ws1 = XLSX.utils.aoa_to_sheet(supervisorData);
+        XLSX.utils.book_append_sheet(wb, ws1, '주관목록');
+        
+        const deptData = [['부서명', '비밀번호'], ['예시: 생산1팀', '1234'], ['예시: 생산2팀', '1234']];
+        const ws2 = XLSX.utils.aoa_to_sheet(deptData);
+        XLSX.utils.book_append_sheet(wb, ws2, '부서목록');
+        
+        const managerData = [['부서명', '담당자명', '이메일'], ['예시: 생산1팀', '홍길동', 'hong@company.com'], ['예시: 생산1팀', '김영희', 'kim@company.com']];
+        const ws3 = XLSX.utils.aoa_to_sheet(managerData);
+        XLSX.utils.book_append_sheet(wb, ws3, '담당자목록');
+        
+        XLSX.writeFile(wb, 'Gemba_Walk_설정_템플릿.xlsx');
+      };
+
+      const exportToExcel = () => {
+        const wb = XLSX.utils.book_new();
+        
+        const supervisorData = [['주관명'], ...supervisors.map(s => [s])];
+        const ws1 = XLSX.utils.aoa_to_sheet(supervisorData);
+        XLSX.utils.book_append_sheet(wb, ws1, '주관목록');
+        
+        const deptData = [['부서명', '비밀번호'], ...departments.map(d => [d.name, d.password])];
+        const ws2 = XLSX.utils.aoa_to_sheet(deptData);
+        XLSX.utils.book_append_sheet(wb, ws2, '부서목록');
+        
+        const managerData = [['부서명', '담당자명', '이메일']];
+        Object.entries(managers).forEach(([dept, mgrs]) => {
+          mgrs.forEach(m => managerData.push([dept, m.name, m.email]));
+        });
+        const ws3 = XLSX.utils.aoa_to_sheet(managerData);
+        XLSX.utils.book_append_sheet(wb, ws3, '담당자목록');
+        
+        XLSX.writeFile(wb, 'Gemba_Walk_설정_데이터.xlsx');
+      };
+
+      const importFromExcel = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          const wb = XLSX.read(evt.target.result, { type: 'binary' });
+          
+          const ws1 = wb.Sheets['주관목록'];
+          if (ws1) {
+            const data = XLSX.utils.sheet_to_json(ws1, { header: 1 });
+            const newSups = data.slice(1).map(row => row[0]).filter(s => s && !String(s).startsWith('예시') && !supervisors.includes(s));
+            if (newSups.length) setSupervisors([...supervisors, ...newSups]);
+          }
+          
+          const ws2 = wb.Sheets['부서목록'];
+          if (ws2) {
+            const data = XLSX.utils.sheet_to_json(ws2, { header: 1 });
+            const newDepts = data.slice(1).filter(row => row[0] && !String(row[0]).startsWith('예시') && !departments.find(d => d.name === row[0])).map(row => ({name: row[0], password: row[1] || '1234'}));
+            if (newDepts.length) {
+              setDepartments([...departments, ...newDepts]);
+              const newMgrs = {...managers};
+              newDepts.forEach(d => { if (!newMgrs[d.name]) newMgrs[d.name] = []; });
+              setManagers(newMgrs);
+            }
+          }
+          
+          const ws3 = wb.Sheets['담당자목록'];
+          if (ws3) {
+            const data = XLSX.utils.sheet_to_json(ws3, { header: 1 });
+            const newMgrs = {...managers};
+            data.slice(1).forEach(row => {
+              if (row[0] && row[1] && !String(row[0]).startsWith('예시')) {
+                if (!newMgrs[row[0]]) newMgrs[row[0]] = [];
+                if (!newMgrs[row[0]].find(m => m.name === row[1])) {
+                  newMgrs[row[0]].push({ name: row[1], email: row[2] || '' });
+                }
+              }
+            });
+            setManagers(newMgrs);
+          }
+          
+          alert('엑셀 파일을 성공적으로 가져왔습니다.');
+        };
+        reader.readAsBinaryString(file);
+        e.target.value = '';
+      };
+
+      return (
+        <div style={styles.container}>
+          <div style={styles.header}>
+            <h1 style={styles.title}>Gemba Walk</h1>
+          </div>
+
+          <div style={{ marginTop: 24, borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <button style={styles.tabBtn(activeTab === 'action')} onClick={() => { setActiveTab('action'); setSelectedDeptForAction(null); }}>🔧 조치 입력</button>
+              <button style={styles.tabBtn(activeTab === 'report')} onClick={() => setActiveTab('report')}>📊 보고서</button>
+              {isAdminMode && <button style={styles.tabBtn(activeTab === 'main')} onClick={() => setActiveTab('main')}>📋 이슈 목록</button>}
+              {isAdminMode && <button style={styles.tabBtn(activeTab === 'settings')} onClick={() => setActiveTab('settings')}>⚙️ 설정</button>}
+            </div>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+              {isAdminMode ? (
+                <button 
+                  style={{...styles.btnSecondary, padding: '8px 16px', fontSize: 12, background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)'}} 
+                  onClick={() => { 
+                    setIsAdminMode(false); 
+                    if (activeTab === 'main' || activeTab === 'settings') {
+                      setActiveTab('action');
+                    }
+                  }}
+                >
+                  🔓 관리자 모드 해제
+                </button>
+              ) : (
+                <button 
+                  style={{...styles.btnSecondary, padding: '8px 16px', fontSize: 12, background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.3)'}} 
+                  onClick={() => setShowAdminModal(true)}
+                >
+                  🔐 관리자
+                </button>
+              )}
+            </div>
+          </div>
+
+          {activeTab === 'main' && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, marginTop: 24 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, flex: 1, marginRight: 24 }}>
+                  <div style={styles.statCard}><div style={styles.statLabel}>전체</div><div style={styles.statValue('#a5b4fc')}>{issues.length}</div></div>
+                  <div style={styles.statCard}><div style={styles.statLabel}>Ongoing</div><div style={styles.statValue('#f59e0b')}>{issues.filter(i => i.status === 'Ongoing').length}</div></div>
+                  <div style={styles.statCard}><div style={styles.statLabel}>Under Review</div><div style={styles.statValue('#6366f1')}>{issues.filter(i => i.status === 'Under Review').length}</div></div>
+                  <div style={styles.statCard}><div style={styles.statLabel}>Complete</div><div style={styles.statValue('#10b981')}>{issues.filter(i => i.status === 'Complete').length}</div></div>
+                </div>
+                <button style={styles.btnPrimary} onClick={() => setShowModal(true)}>➕ 새 이슈 등록</button>
+              </div>
+
+              {selectedIds.length > 0 && (
+                <div style={styles.actionBar}>
+                  <span style={{ color: '#a5b4fc', fontSize: 14 }}>{selectedIds.length}개 선택됨</span>
+                  {selectedIds.length === 2 && <button style={{...styles.btnPrimary, padding: '8px 16px', fontSize: 13}} onClick={mergeIssues}>🔗 병합</button>}
+                  <button style={{...styles.btnDanger, padding: '8px 16px', fontSize: 13}} onClick={deleteSelected}>🗑️ 삭제</button>
+                  <button style={{...styles.btnSecondary, padding: '8px 16px', fontSize: 13}} onClick={() => setSelectedIds([])}>선택 해제</button>
+                </div>
+              )}
+
+              <div style={{ overflowX: 'auto' }}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={{...styles.th, width: 40}}></th>
+                      <th style={{...styles.th, width: 100}}>일자</th>
+                      <th style={{...styles.th, width: 100}}>주관</th>
+                      <th style={{...styles.th, width: 100}}>부서</th>
+                      <th style={{...styles.th, width: 100}}>담당자</th>
+                      <th style={{...styles.th, minWidth: 180}}>내용(설명)</th>
+                      <th style={{...styles.th, width: 120}}>지적사진</th>
+                      <th style={{...styles.th, minWidth: 180}}>조치내용</th>
+                      <th style={{...styles.th, width: 120}}>조치사진</th>
+                      <th style={{...styles.th, width: 110}}>상태</th>
+                      <th style={{...styles.th, width: 100}}>Target Date</th>
+                      <th style={{...styles.th, width: 110}}>개선날짜</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {issues.length === 0 ? (
+                      <tr><td colSpan="12" style={{...styles.td, textAlign: 'center', padding: 60, color: 'rgba(255,255,255,0.4)'}}>등록된 이슈가 없습니다.</td></tr>
+                    ) : issues.map(issue => {
+                      // Target Date가 없으면 일자 + 30일로 계산
+                      const targetDate = issue.targetDate || (() => {
+                        if (issue.date) {
+                          const d = new Date(issue.date);
+                          d.setDate(d.getDate() + 30);
+                          return d.toISOString().split('T')[0];
+                        }
+                        return '';
+                      })();
+                      // Target Date 지남 여부 확인
+                      const isOverdue = targetDate && new Date(targetDate) < new Date() && issue.status !== 'Complete';
+                      
+                      return (
+                      <tr key={issue.id} style={{ background: selectedIds.includes(issue.id) ? 'rgba(99, 102, 241, 0.15)' : isOverdue ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+                        <td style={styles.td}>
+                          <input type="checkbox" checked={selectedIds.includes(issue.id)} onChange={() => toggleSelect(issue.id)} disabled={!selectedIds.includes(issue.id) && selectedIds.length >= 2} style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#6366f1' }} />
+                        </td>
+                        <td style={styles.td}><input type="date" style={styles.inlineInput} value={issue.date} onChange={(e) => {
+                          updateIssueField(issue.id, 'date', e.target.value);
+                          // Target Date도 자동 업데이트
+                          const newDate = new Date(e.target.value);
+                          newDate.setDate(newDate.getDate() + 30);
+                          updateIssueField(issue.id, 'targetDate', newDate.toISOString().split('T')[0]);
+                        }} /></td>
+                        <td style={styles.td}>
+                          <select style={styles.inlineInput} value={issue.supervisor} onChange={(e) => updateIssueField(issue.id, 'supervisor', e.target.value)}>
+                            <option value="" style={styles.selectOption}>선택</option>
+                            {supervisors.map(s => <option key={s} value={s} style={styles.selectOption}>{s}</option>)}
+                          </select>
+                        </td>
+                        <td style={styles.td}>
+                          <select style={styles.inlineInput} value={issue.department} onChange={(e) => updateIssueField(issue.id, 'department', e.target.value)}>
+                            <option value="" style={styles.selectOption}>선택</option>
+                            {departments.map(d => <option key={d.name} value={d.name} style={styles.selectOption}>{d.name}</option>)}
+                          </select>
+                        </td>
+                        <td style={styles.td}>
+                          <select style={{...styles.inlineInput, minWidth: 90}} value={issue.manager} onChange={(e) => updateIssueField(issue.id, 'manager', e.target.value)}>
+                            <option value="" style={styles.selectOption}>선택</option>
+                            {(managers[issue.department] || []).map(m => <option key={m.name} value={m.name} style={styles.selectOption}>{m.name}</option>)}
+                          </select>
+                        </td>
+                        <td style={styles.td}><textarea style={{...styles.inlineInput, minHeight: 60}} value={issue.description} onChange={(e) => updateIssueField(issue.id, 'description', e.target.value)} /></td>
+                        <td style={styles.td}>
+                          <div style={styles.photoGrid}>
+                            {issue.issuePhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage(p)} />)}
+                          </div>
+                          <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: 'rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                            📷 추가
+                            <input type="file" accept="image/*" multiple onChange={(e) => handlePhotoUpload(issue.id, 'issuePhotos', e.target.files)} style={{ display: 'none' }} />
+                          </label>
+                        </td>
+                        <td style={styles.td}><textarea style={{...styles.inlineInput, minHeight: 60}} value={issue.actionContent} onChange={(e) => updateIssueField(issue.id, 'actionContent', e.target.value)} /></td>
+                        <td style={styles.td}>
+                          <div style={styles.photoGrid}>
+                            {issue.actionPhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage(p)} />)}
+                          </div>
+                          <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: 'rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                            📷 추가
+                            <input type="file" accept="image/*" multiple onChange={(e) => handlePhotoUpload(issue.id, 'actionPhotos', e.target.files)} style={{ display: 'none' }} />
+                          </label>
+                        </td>
+                        <td style={styles.td}>
+                          <select style={{...styles.inlineInput, ...styles.statusBadge(issue.status)}} value={issue.status} onChange={(e) => updateIssueField(issue.id, 'status', e.target.value)}>
+                            <option value="Ongoing" style={styles.selectOption}>Ongoing</option>
+                            <option value="Under Review" style={styles.selectOption}>Under Review</option>
+                            <option value="Complete" style={styles.selectOption}>Complete</option>
+                          </select>
+                        </td>
+                        <td style={{...styles.td, color: isOverdue ? '#ef4444' : 'inherit', fontWeight: isOverdue ? 600 : 400}}>
+                          {targetDate}
+                          {isOverdue && <div style={{fontSize: 10, color: '#ef4444'}}>⚠️ 지연</div>}
+                        </td>
+                        <td style={styles.td}><input type="date" style={styles.inlineInput} value={issue.improvedDate} onChange={(e) => updateIssueField(issue.id, 'improvedDate', e.target.value)} /></td>
+                      </tr>
+                    )})}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'action' && (
+            <div style={{ marginTop: 24 }}>
+              {!selectedDeptForAction ? (
+                <>
+                  <h3 style={{ marginBottom: 20, color: '#a5b4fc' }}>부서를 선택하세요</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
+                    {departments.map(dept => {
+                      const deptIssues = issues.filter(i => i.department === dept.name);
+                      const ongoing = deptIssues.filter(i => i.status === 'Ongoing').length;
+                      const complete = deptIssues.filter(i => i.status === 'Complete').length;
+                      return (
+                        <div key={dept.name} style={styles.deptCard} onClick={() => handleDeptClick(dept)}>
+                          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>{dept.name}</div>
+                          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
+                            전체: {deptIssues.length}건 | 미조치: <span style={{color: '#f59e0b'}}>{ongoing}</span> | 완료: <span style={{color: '#10b981'}}>{complete}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+                    <button style={styles.btnSecondary} onClick={() => setSelectedDeptForAction(null)}>← 부서 선택</button>
+                    <h3 style={{ color: '#a5b4fc' }}>{selectedDeptForAction} - 조치 입력</h3>
+                  </div>
+                  
+                  {/* 부서별 통계 카드 */}
+                  {(() => {
+                    const deptIssues = issues.filter(i => i.department === selectedDeptForAction);
+                    const ongoing = deptIssues.filter(i => i.status === 'Ongoing').length;
+                    const underReview = deptIssues.filter(i => i.status === 'Under Review').length;
+                    const complete = deptIssues.filter(i => i.status === 'Complete').length;
+                    return (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+                        <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: 12, padding: '16px 20px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 6 }}>전체</div>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: 'white' }}>{deptIssues.length}</div>
+                        </div>
+                        <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: 12, padding: '16px 20px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 6 }}>Ongoing</div>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#f59e0b' }}>{ongoing}</div>
+                        </div>
+                        <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: 12, padding: '16px 20px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 6 }}>Under Review</div>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#6366f1' }}>{underReview}</div>
+                        </div>
+                        <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: 12, padding: '16px 20px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 6 }}>Complete</div>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#10b981' }}>{complete}</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={styles.table}>
+                      <thead>
+                        <tr>
+                          <th style={{...styles.th, width: 100}}>일자</th>
+                          <th style={{...styles.th, width: 100}}>주관</th>
+                          <th style={{...styles.th, width: 120}}>담당자</th>
+                          <th style={{...styles.th, minWidth: 180}}>내용(설명)</th>
+                          <th style={{...styles.th, width: 120}}>지적사진</th>
+                          <th style={{...styles.th, minWidth: 180}}>조치내용</th>
+                          <th style={{...styles.th, width: 120}}>조치사진</th>
+                          <th style={{...styles.th, width: 120}}>상태</th>
+                          <th style={{...styles.th, width: 100}}>Target Date</th>
+                          <th style={{...styles.th, width: 90}}>보고</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {issues.filter(i => i.department === selectedDeptForAction).length === 0 ? (
+                          <tr><td colSpan="10" style={{...styles.td, textAlign: 'center', padding: 60, color: 'rgba(255,255,255,0.4)'}}>해당 부서의 이슈가 없습니다.</td></tr>
+                        ) : issues.filter(i => i.department === selectedDeptForAction).map(issue => {
+                          // Target Date 계산
+                          const targetDate = issue.targetDate || (() => {
+                            if (issue.date) {
+                              const d = new Date(issue.date);
+                              d.setDate(d.getDate() + 30);
+                              return d.toISOString().split('T')[0];
+                            }
+                            return '';
+                          })();
+                          const isOverdue = targetDate && new Date(targetDate) < new Date() && issue.status !== 'Complete';
+                          
+                          return (
+                          <tr key={issue.id} style={{ background: issue.status === 'Complete' ? 'rgba(16, 185, 129, 0.05)' : isOverdue ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+                            <td style={styles.td}>{issue.date}</td>
+                            <td style={styles.td}>{issue.supervisor}</td>
+                            <td style={styles.td}>
+                              <select style={{...styles.inlineInput, minWidth: 100}} value={issue.manager} onChange={(e) => updateIssueField(issue.id, 'manager', e.target.value)} disabled={issue.status === 'Complete'}>
+                                <option value="" style={styles.selectOption}>선택</option>
+                                {(managers[selectedDeptForAction] || []).map(m => <option key={m.name} value={m.name} style={styles.selectOption}>{m.name}</option>)}
+                              </select>
+                            </td>
+                            <td style={styles.td}>{issue.description}</td>
+                            <td style={styles.td}>
+                              <div style={styles.photoGrid}>
+                                {issue.issuePhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage(p)} />)}
+                              </div>
+                            </td>
+                            <td style={styles.td}>
+                              <textarea style={{...styles.inlineInput, minHeight: 60}} value={issue.actionContent} onChange={(e) => updateIssueField(issue.id, 'actionContent', e.target.value)} placeholder="조치 내용을 입력하세요" disabled={issue.status !== 'Ongoing'} />
+                            </td>
+                            <td style={styles.td}>
+                              <div style={styles.photoGrid}>
+                                {issue.actionPhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage(p)} />)}
+                              </div>
+                              {issue.status === 'Ongoing' && (
+                                <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: 'rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                                  📷 추가
+                                  <input type="file" accept="image/*" multiple onChange={(e) => handlePhotoUpload(issue.id, 'actionPhotos', e.target.files)} style={{ display: 'none' }} />
+                                </label>
+                              )}
+                            </td>
+                            <td style={styles.td}>
+                              <span style={{...styles.statusBadge(issue.status), padding: '6px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap'}}>
+                                {issue.status === 'Under Review' ? 'Review' : issue.status}
+                              </span>
+                            </td>
+                            <td style={{...styles.td, color: isOverdue ? '#ef4444' : 'inherit', fontWeight: isOverdue ? 600 : 400, fontSize: 12}}>
+                              {targetDate}
+                              {isOverdue && <div style={{fontSize: 10, color: '#ef4444'}}>⚠️ 지연</div>}
+                            </td>
+                            <td style={styles.td}>
+                              {(() => {
+                                const canReport = issue.actionContent && issue.actionContent.trim() !== '' && issue.actionPhotos && issue.actionPhotos.length > 0;
+                                if (issue.status === 'Complete') {
+                                  return <span style={{ padding: '6px 10px', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderRadius: 6, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>✓ 완료</span>;
+                                } else if (issue.status === 'Under Review') {
+                                  return <span style={{ padding: '6px 10px', background: 'rgba(99, 102, 241, 0.2)', color: '#818cf8', borderRadius: 6, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>✓ 보고됨</span>;
+                                } else {
+                                  return (
+                                    <button 
+                                      style={{
+                                        ...styles.btnPrimary, 
+                                        padding: '6px 12px', 
+                                        fontSize: 11,
+                                        opacity: canReport ? 1 : 0.5,
+                                        cursor: canReport ? 'pointer' : 'not-allowed',
+                                        whiteSpace: 'nowrap'
+                                      }} 
+                                      disabled={!canReport}
+                                      onClick={() => submitReport(issue.id)}
+                                    >
+                                      보고
+                                    </button>
+                                  );
+                                }
+                              })()}
+                            </td>
+                          </tr>
+                        )})}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'report' && (
+            <div style={{ marginTop: 24 }}>
+              <div style={{ display: 'flex', gap: 16, marginBottom: 24, alignItems: 'center' }}>
+                <select 
+                  value={reportYear} 
+                  onChange={(e) => setReportYear(parseInt(e.target.value))}
+                  style={{...styles.settingsInput, width: 120}}
+                >
+                  {[2024, 2025, 2026, 2027, 2028].map(year => (
+                    <option key={year} value={year} style={styles.selectOption}>{year}</option>
+                  ))}
+                </select>
+                <select 
+                  value={reportMonth} 
+                  onChange={(e) => setReportMonth(e.target.value)}
+                  style={{...styles.settingsInput, width: 100}}
+                >
+                  <option value="All" style={styles.selectOption}>All</option>
+                  {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(month => (
+                    <option key={month} value={month} style={styles.selectOption}>{month}</option>
+                  ))}
+                </select>
+                {isAdminMode && <button style={styles.btnPrimary} onClick={() => setShowPrintModal(true)}>📥 보고서 다운로드</button>}
+              </div>
+
+              {/* PDF 스타일 보고서 미리보기 */}
+              <div style={{ background: 'white', borderRadius: 8, padding: 30, color: '#333' }}>
+                <h1 style={{ color: '#1e3a5f', fontSize: 24, fontWeight: 800, marginBottom: 20 }}>EHS & Lean Gemba Walk Status</h1>
+                
+                {/* EHS Gemba Audit status 테이블 */}
+                <h3 style={{ fontSize: 12, margin: '16px 0 8px 0', fontWeight: 600 }}>EHS Gemba Audit status</h3>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, marginBottom: 24 }}>
+                  <thead>
+                    <tr>
+                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #ccc', width: 50 }}>Month</th>
+                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #ccc', width: 70 }}>Finding Total</th>
+                      <th colSpan={2} style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #ccc' }}>Corrective Action</th>
+                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #ccc', width: 70 }}>Close Ratio</th>
+                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #ccc' }}>Detail (Open issues)</th>
+                    </tr>
+                    <tr>
+                      <th style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #ccc', width: 55 }}>Close #</th>
+                      <th style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #ccc', width: 55 }}>Open #</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {months.map((month, idx) => {
+                      const stats = getMonthStats(idx);
+                      const detailKey = `${reportYear}-${month}`;
+                      return (
+                        <tr key={month}>
+                          <td style={{ border: '1px solid #ccc', padding: '6px 8px', fontWeight: 500 }}>{month}</td>
+                          <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center' }}>{stats.total || ''}</td>
+                          <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center' }}>{stats.closed || ''}</td>
+                          <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center' }}>{stats.open || ''}</td>
+                          <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center' }}>{stats.total > 0 ? `${stats.closeRate}%` : ''}</td>
+                          <td style={{ border: '1px solid #ccc', padding: '4px 8px' }}>
+                            {isAdminMode ? (
+                              <input 
+                                type="text" 
+                                style={{ width: '100%', padding: '4px 8px', border: '1px solid #ddd', borderRadius: 4, fontSize: 10, background: 'white' }} 
+                                value={monthlyDetails[detailKey] || ''} 
+                                onChange={(e) => setMonthlyDetails({...monthlyDetails, [detailKey]: e.target.value})}
+                                placeholder=""
+                              />
+                            ) : (
+                              <span style={{ fontSize: 10, color: '#666' }}>{monthlyDetails[detailKey] || ''}</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <tr style={{ background: '#fef9c3' }}>
+                      <td style={{ border: '1px solid #ccc', padding: '6px 8px', fontWeight: 700 }}>Total</td>
+                      <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{getYearlyTotal().total}</td>
+                      <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{getYearlyTotal().closed}</td>
+                      <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{getYearlyTotal().open}</td>
+                      <td style={{ border: '1px solid #ccc', padding: '6px 8px' }}></td>
+                      <td style={{ border: '1px solid #ccc', padding: '6px 8px' }}></td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Open status 테이블 */}
+                <h3 style={{ fontSize: 12, margin: '20px 0 8px 0', fontWeight: 700, color: '#dc2626' }}>
+                  Open status for {reportMonth === 'All' ? `${reportYear} All` : `${reportMonth} ${reportYear}`}
+                </h3>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ background: '#fef9c3', padding: '8px 6px', border: '1px solid #ccc', width: 80 }}></th>
+                      {departments.map(dept => (
+                        <th key={dept.name} style={{ background: '#7c3aed', color: 'white', padding: '8px 6px', border: '1px solid #ccc', fontSize: 10 }}>{dept.name}</th>
+                      ))}
+                      <th style={{ background: '#7c3aed', color: 'white', padding: '8px 6px', border: '1px solid #ccc' }}>All</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                      const monthIndex = monthNames.indexOf(reportMonth);
+                      const filteredIssues = issues.filter(i => {
+                        const d = new Date(i.date);
+                        if (reportMonth === 'All') return d.getFullYear() === reportYear;
+                        return d.getFullYear() === reportYear && d.getMonth() === monthIndex;
+                      });
+                      return (
+                        <>
+                          <tr>
+                            <td style={{ background: '#fef9c3', border: '1px solid #ccc', padding: '6px 8px', fontWeight: 600 }}># of OFI</td>
+                            {departments.map(dept => {
+                              const count = filteredIssues.filter(i => i.department === dept.name).length;
+                              return <td key={dept.name} style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center' }}>{count}</td>;
+                            })}
+                            <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{filteredIssues.length}</td>
+                          </tr>
+                          <tr>
+                            <td style={{ background: '#fef9c3', border: '1px solid #ccc', padding: '6px 8px', fontWeight: 600 }}>Open</td>
+                            {departments.map(dept => {
+                              const count = filteredIssues.filter(i => i.department === dept.name && i.status !== 'Complete').length;
+                              return <td key={dept.name} style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center' }}>{count}</td>;
+                            })}
+                            <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{filteredIssues.filter(i => i.status !== 'Complete').length}</td>
+                          </tr>
+                          <tr>
+                            <td style={{ background: '#fef9c3', border: '1px solid #ccc', padding: '6px 8px', fontWeight: 600 }}>Closed</td>
+                            {departments.map(dept => {
+                              const count = filteredIssues.filter(i => i.department === dept.name && i.status === 'Complete').length;
+                              return <td key={dept.name} style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center' }}>{count}</td>;
+                            })}
+                            <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{filteredIssues.filter(i => i.status === 'Complete').length}</td>
+                          </tr>
+                          <tr>
+                            <td style={{ background: '#fef9c3', border: '1px solid #ccc', padding: '6px 8px', fontWeight: 600 }}>Close Rate</td>
+                            {departments.map(dept => {
+                              const total = filteredIssues.filter(i => i.department === dept.name).length;
+                              const closed = filteredIssues.filter(i => i.department === dept.name && i.status === 'Complete').length;
+                              const rate = total > 0 ? Math.round(closed / total * 100) : 0;
+                              return <td key={dept.name} style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', color: '#dc2626', fontWeight: 600 }}>{rate}%</td>;
+                            })}
+                            {(() => {
+                              const total = filteredIssues.length;
+                              const closed = filteredIssues.filter(i => i.status === 'Complete').length;
+                              const rate = total > 0 ? Math.round(closed / total * 100) : 0;
+                              return <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', color: '#dc2626', fontWeight: 700 }}>{rate}%</td>;
+                            })()}
+                          </tr>
+                        </>
+                      );
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'settings' && (
+            <div style={{ maxWidth: 800, marginTop: 24 }}>
+              {/* 엑셀 가져오기/내보내기 */}
+              <div style={styles.settingsCard}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#a5b4fc' }}>📊 엑셀로 설정 관리</h3>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <button style={{...styles.btnSecondary, display: 'flex', alignItems: 'center', gap: 6}} onClick={downloadTemplate}>
+                    📥 템플릿 다운로드
+                  </button>
+                  <button style={{...styles.btnSecondary, display: 'flex', alignItems: 'center', gap: 6}} onClick={exportToExcel}>
+                    📤 현재 설정 내보내기
+                  </button>
+                  <label style={{...styles.btnPrimary, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer'}}>
+                    📂 엑셀 파일 업로드
+                    <input type="file" accept=".xlsx,.xls" onChange={importFromExcel} style={{ display: 'none' }} />
+                  </label>
+                </div>
+                <div style={{ marginTop: 12, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                  * 템플릿을 다운로드하여 양식에 맞게 작성 후 업로드하면 주관/부서/담당자를 한번에 등록할 수 있습니다.
+                </div>
+              </div>
+
+              {/* 주관 설정 */}
+              <div style={styles.settingsCard}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#a5b4fc' }}>📌 주관 목록</h3>
+                <div style={styles.inputRow}>
+                  <input type="text" placeholder="주관 이름 입력" value={newSupervisor} onChange={(e) => setNewSupervisor(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addSupervisor()} style={styles.settingsInput} />
+                  <button style={styles.btnPrimary} onClick={addSupervisor}>추가</button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {supervisors.map(s => (
+                    <span key={s} style={styles.tag}>
+                      {s}
+                      <button onClick={() => removeSupervisor(s)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, padding: 0 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* 부서 설정 */}
+              <div style={styles.settingsCard}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#a5b4fc' }}>🏢 부서 목록</h3>
+                <div style={styles.inputRow}>
+                  <input type="text" placeholder="부서 이름 입력" value={newDepartment} onChange={(e) => setNewDepartment(e.target.value)} style={{...styles.settingsInput, flex: 1}} />
+                  <input type="text" placeholder="비밀번호" value={newDeptPassword} onChange={(e) => setNewDeptPassword(e.target.value)} style={{...styles.settingsInput, width: 100}} />
+                  <button style={styles.btnPrimary} onClick={addDepartment}>추가</button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {departments.map(d => (
+                    <span key={d.name} style={styles.tag}>
+                      {d.name}
+                      <button onClick={() => openEditPasswordModal(d)} style={{ background: 'none', border: 'none', color: '#a5b4fc', cursor: 'pointer', fontSize: 12, padding: '0 4px' }}>수정</button>
+                      <button onClick={() => removeDepartment(d.name)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, padding: 0 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* 담당자 설정 */}
+              <div style={styles.settingsCard}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#a5b4fc' }}>👤 담당자 목록</h3>
+                <div style={styles.inputRow}>
+                  <select value={selectedDeptForManager} onChange={(e) => setSelectedDeptForManager(e.target.value)} style={{...styles.settingsInput, width: 150}}>
+                    <option value="" style={styles.selectOption}>부서 선택</option>
+                    {departments.map(d => <option key={d.name} value={d.name} style={styles.selectOption}>{d.name}</option>)}
+                  </select>
+                  <input type="text" placeholder="담당자 이름" value={newManager} onChange={(e) => setNewManager(e.target.value)} style={{...styles.settingsInput, flex: 1}} />
+                  <input type="email" placeholder="이메일" value={newManagerEmail} onChange={(e) => setNewManagerEmail(e.target.value)} style={{...styles.settingsInput, flex: 1}} />
+                  <button style={styles.btnPrimary} onClick={addManager}>추가</button>
+                </div>
+                {departments.map(d => (
+                  <div key={d.name} style={{ marginTop: 16 }}>
+                    <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>{d.name}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {(managers[d.name] || []).map(m => (
+                        <span key={m.name} style={styles.tag}>
+                          {m.name} {m.email && <span style={{ opacity: 0.6, fontSize: 11 }}>({m.email})</span>}
+                          <button onClick={() => openEditManagerModal(d.name, m)} style={{ background: 'none', border: 'none', color: '#a5b4fc', cursor: 'pointer', fontSize: 12, padding: '0 4px' }}>수정</button>
+                          <button onClick={() => removeManager(d.name, m.name)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, padding: 0 }}>×</button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 새 이슈 등록 모달 */}
+          {showModal && (
+            <div style={styles.modalOverlay} onClick={() => setShowModal(false)}>
+              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <h2 style={{ margin: '0 0 24px 0', fontSize: 20, fontWeight: 600 }}>새 이슈 등록</h2>
+                <input type="date" style={styles.input} value={newIssue.date} onChange={(e) => setNewIssue({...newIssue, date: e.target.value})} />
+                <select style={styles.input} value={newIssue.supervisor} onChange={(e) => setNewIssue({...newIssue, supervisor: e.target.value})}>
+                  <option value="" style={styles.selectOption}>주관 선택</option>
+                  {supervisors.map(s => <option key={s} value={s} style={styles.selectOption}>{s}</option>)}
+                </select>
+                <select style={styles.input} value={newIssue.department} onChange={(e) => setNewIssue({...newIssue, department: e.target.value, manager: ''})}>
+                  <option value="" style={styles.selectOption}>부서 선택</option>
+                  {departments.map(d => <option key={d.name} value={d.name} style={styles.selectOption}>{d.name}</option>)}
+                </select>
+                <select style={styles.input} value={newIssue.manager} onChange={(e) => setNewIssue({...newIssue, manager: e.target.value})}>
+                  <option value="" style={styles.selectOption}>담당자 선택</option>
+                  {(managers[newIssue.department] || []).map(m => <option key={m.name} value={m.name} style={styles.selectOption}>{m.name}</option>)}
+                </select>
+                <textarea style={styles.textarea} placeholder="내용(설명)" value={newIssue.description} onChange={(e) => setNewIssue({...newIssue, description: e.target.value})} />
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>지적 사진</label>
+                  <div style={styles.photoGrid}>
+                    {newIssue.issuePhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage(p)} />)}
+                  </div>
+                  <label style={{ display: 'inline-block', marginTop: 8, padding: '8px 16px', background: 'rgba(255,255,255,0.1)', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+                    📷 사진 추가
+                    <input type="file" accept="image/*" multiple onChange={(e) => handleNewIssuePhoto(e.target.files)} style={{ display: 'none' }} />
+                  </label>
+                </div>
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                  <button style={styles.btnSecondary} onClick={() => setShowModal(false)}>취소</button>
+                  <button style={styles.btnPrimary} onClick={addIssue}>등록</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 비밀번호 확인 모달 */}
+          {showPasswordModal && (
+            <div style={styles.modalOverlay} onClick={() => setShowPasswordModal(false)}>
+              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <h2 style={{ margin: '0 0 24px 0', fontSize: 20, fontWeight: 600 }}>🔐 비밀번호 입력</h2>
+                <p style={{ marginBottom: 16, color: 'rgba(255,255,255,0.7)' }}>{pendingDept?.name} 부서에 접근하려면 비밀번호를 입력하세요.</p>
+                <input 
+                  type="password" 
+                  placeholder="비밀번호" 
+                  value={passwordInput} 
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && verifyPassword()}
+                  style={styles.input}
+                  autoFocus
+                />
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                  <button style={styles.btnSecondary} onClick={() => setShowPasswordModal(false)}>취소</button>
+                  <button style={styles.btnPrimary} onClick={verifyPassword}>확인</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 관리자 비밀번호 모달 */}
+          {showAdminModal && (
+            <div style={styles.modalOverlay} onClick={() => { setShowAdminModal(false); setAdminPassword(''); }}>
+              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <h2 style={{ margin: '0 0 24px 0', fontSize: 20, fontWeight: 600 }}>🔐 관리자 모드</h2>
+                <p style={{ marginBottom: 16, color: 'rgba(255,255,255,0.7)' }}>관리자 비밀번호를 입력하세요.</p>
+                <input 
+                  type="password" 
+                  placeholder="관리자 비밀번호" 
+                  value={adminPassword} 
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      if (adminPassword === 'admin123') {
+                        setIsAdminMode(true);
+                        setShowAdminModal(false);
+                        setAdminPassword('');
+                        alert('관리자 모드가 활성화되었습니다.');
+                      } else {
+                        alert('비밀번호가 틀렸습니다.');
+                      }
+                    }
+                  }}
+                  style={styles.input}
+                  autoFocus
+                />
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                  <button style={styles.btnSecondary} onClick={() => { setShowAdminModal(false); setAdminPassword(''); }}>취소</button>
+                  <button style={styles.btnPrimary} onClick={() => {
+                    if (adminPassword === 'admin123') {
+                      setIsAdminMode(true);
+                      setShowAdminModal(false);
+                      setAdminPassword('');
+                      alert('관리자 모드가 활성화되었습니다.');
+                    } else {
+                      alert('비밀번호가 틀렸습니다.');
+                    }
+                  }}>확인</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 부서 수정 모달 */}
+          {showEditPasswordModal && (
+            <div style={styles.modalOverlay} onClick={() => setShowEditPasswordModal(false)}>
+              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <h2 style={{ margin: '0 0 24px 0', fontSize: 20, fontWeight: 600 }}>🏢 부서 정보 수정</h2>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>부서명</label>
+                  <input 
+                    type="text" 
+                    placeholder="부서명" 
+                    value={editDeptName} 
+                    onChange={(e) => setEditDeptName(e.target.value)}
+                    style={{ ...styles.settingsInput, width: '100%', padding: '12px 16px', fontSize: 14 }}
+                  />
+                </div>
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>비밀번호</label>
+                  <input 
+                    type="text" 
+                    placeholder="비밀번호" 
+                    value={newPasswordInput} 
+                    onChange={(e) => setNewPasswordInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && saveNewPassword()}
+                    style={{ ...styles.settingsInput, width: '100%', padding: '12px 16px', fontSize: 14 }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                  <button style={styles.btnSecondary} onClick={() => { setShowEditPasswordModal(false); setEditingDept(null); setEditDeptName(''); setNewPasswordInput(''); }}>취소</button>
+                  <button style={styles.btnPrimary} onClick={saveNewPassword}>저장</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 담당자 수정 모달 */}
+          {showEditManagerModal && (
+            <div style={styles.modalOverlay} onClick={() => setShowEditManagerModal(false)}>
+              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <h2 style={{ margin: '0 0 24px 0', fontSize: 20, fontWeight: 600 }}>👤 담당자 정보 수정</h2>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>이름</label>
+                  <input 
+                    type="text" 
+                    placeholder="담당자 이름" 
+                    value={editManagerName} 
+                    onChange={(e) => setEditManagerName(e.target.value)}
+                    style={{ ...styles.settingsInput, width: '100%', padding: '12px 16px', fontSize: 14 }}
+                  />
+                </div>
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>이메일</label>
+                  <input 
+                    type="email" 
+                    placeholder="이메일" 
+                    value={editManagerEmail} 
+                    onChange={(e) => setEditManagerEmail(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && saveEditManager()}
+                    style={{ ...styles.settingsInput, width: '100%', padding: '12px 16px', fontSize: 14 }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                  <button style={styles.btnSecondary} onClick={() => { setShowEditManagerModal(false); setEditingManager(null); setEditManagerDept(''); setEditManagerName(''); setEditManagerEmail(''); }}>취소</button>
+                  <button style={styles.btnPrimary} onClick={saveEditManager}>저장</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 보고서 다운로드 모달 */}
+          {showPrintModal && (
+            <div style={styles.modalOverlay} onClick={() => setShowPrintModal(false)}>
+              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <h2 style={{ margin: '0 0 24px 0', fontSize: 20, fontWeight: 600 }}>📥 보고서 다운로드</h2>
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>연도 선택</label>
+                  <select 
+                    value={printYear} 
+                    onChange={(e) => setPrintYear(parseInt(e.target.value))}
+                    style={{ ...styles.settingsInput, width: '100%', padding: '12px 16px', fontSize: 14, cursor: 'pointer' }}
+                  >
+                    {[2024, 2025, 2026, 2027, 2028].map(year => (
+                      <option key={year} value={year} style={styles.selectOption}>{year}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ marginBottom: 24 }}>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>월 선택</label>
+                  <select 
+                    value={printMonth} 
+                    onChange={(e) => setPrintMonth(e.target.value)}
+                    style={{ ...styles.settingsInput, width: '100%', padding: '12px 16px', fontSize: 14, cursor: 'pointer' }}
+                  >
+                    <option value="All" style={styles.selectOption}>All</option>
+                    {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(month => (
+                      <option key={month} value={month} style={styles.selectOption}>{month}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                  <button style={styles.btnSecondary} onClick={() => setShowPrintModal(false)}>취소</button>
+                  <button style={{...styles.btnPrimary, background: 'linear-gradient(135deg, #10b981, #059669)'}} onClick={openPreview}>미리보기</button>
+                  <button style={styles.btnPrimary} onClick={handlePrintReport}>PDF 다운로드</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 미리보기 모달 - 스크롤 가능한 전체 페이지 뷰 */}
+          {showPreview && (
+            <div 
+              style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.92)', zIndex: 2000, overflow: 'auto' }}
+              onMouseMove={handleResizeMove}
+              onMouseUp={handleResizeEnd}
+              onMouseLeave={handleResizeEnd}
+            >
+              {/* 상단 툴바 */}
+              <div style={{ position: 'sticky', top: 0, background: 'linear-gradient(135deg, #1e1e2f, #2d2d44)', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', zIndex: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'white' }}>📋 PDF 미리보기</h2>
+                  <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>{printYear}년 {printMonth} | 총 {previewIssues.length + 1} 페이지</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 12, color: '#fbbf24', background: 'rgba(251,191,36,0.2)', padding: '4px 12px', borderRadius: 4 }}>💡 이미지 모서리를 드래그해서 크기 조절</span>
+                  <button style={styles.btnSecondary} onClick={() => { setShowPreview(false); setPreviewIssues([]); }}>닫기</button>
+                  <button style={styles.btnPrimary} onClick={() => { setShowPreview(false); downloadReport(); }}>PDF 다운로드</button>
+                </div>
+              </div>
+              
+              {/* 스크롤 가능한 페이지 목록 */}
+              <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 32 }}>
+                
+                {/* 요약 페이지 */}
+                <div style={{ background: 'white', width: 950, padding: 30, borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+                  <div style={{ textAlign: 'center', marginBottom: 16, color: '#6b7280', fontSize: 12, fontWeight: 600 }}>페이지 1 / {previewIssues.length + 1}</div>
+                  <h1 style={{ color: '#1e3a5f', fontSize: 28, fontWeight: 800, marginBottom: 16 }}>EHS & Lean Gemba Walk Status</h1>
+                  <div style={{ padding: 16, background: '#f8f9fa', borderRadius: 8, fontSize: 14, color: '#333' }}>
+                    <p style={{ margin: 0 }}>• 기간: {printYear}년 {printMonth}</p>
+                    <p style={{ margin: '6px 0 0 0' }}>• 총 이슈: {previewIssues.length}건</p>
+                    <p style={{ margin: '6px 0 0 0' }}>• 완료: {previewIssues.filter(i => i.status === 'Complete').length}건</p>
+                    <p style={{ margin: '6px 0 0 0' }}>• 진행중: {previewIssues.filter(i => i.status !== 'Complete').length}건</p>
+                  </div>
+                </div>
+
+                {/* 각 이슈 페이지 */}
+                {previewIssues.map((issue, idx) => {
+                  const sizes = imageSizes[issue.id] || { beforeSize: 100, afterSize: 100 };
+                  const d = new Date(issue.date);
+                  const findingNum = String(d.getFullYear()).slice(-2) + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(idx + 1).padStart(2, '0');
+                  
+                  // 이미지 렌더링 함수 (드래그 핸들 포함, 겹침 허용, 개별 크기)
+                  const renderResizableImage = (photos, type, sizes) => {
+                    if (!photos || photos.length === 0) {
+                      return <span style={{ color: '#9ca3af', fontSize: 14 }}>No Image</span>;
+                    }
+                    
+                    const baseSize = 280;
+                    
+                    if (photos.length === 1) {
+                      const sizePercent = sizes[type + '0Size'] || 100;
+                      const imgSize = baseSize * sizePercent / 100;
+                      return (
+                        <div style={{ position: 'relative', display: 'inline-block' }}>
+                          <img src={photos[0]} style={{ maxWidth: imgSize, maxHeight: imgSize, objectFit: 'contain', display: 'block' }} />
+                          <div 
+                            onMouseDown={(e) => handleResizeStart(e, issue.id, type, 0)}
+                            style={{ 
+                              position: 'absolute', bottom: -4, right: -4, width: 16, height: 16, 
+                              background: type === 'before' ? '#be185d' : '#10b981', 
+                              borderRadius: 3, cursor: 'nwse-resize',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              boxShadow: '0 2px 4px rgba(0,0,0,0.3)', zIndex: 10
+                            }}
+                          >
+                            <span style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>↘</span>
+                          </div>
+                          <div style={{ position: 'absolute', top: 4, left: 4, background: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 6px', borderRadius: 3, fontSize: 10, zIndex: 10 }}>
+                            {sizePercent}%
+                          </div>
+                        </div>
+                      );
+                    } else {
+                      // 2장: 개별 크기 조절, 첫 번째가 위로
+                      const size0 = sizes[type + '0Size'] || 100;
+                      const size1 = sizes[type + '1Size'] || 100;
+                      const img0Size = baseSize * 0.6 * size0 / 100;
+                      const img1Size = baseSize * 0.6 * size1 / 100;
+                      
+                      return (
+                        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                          {/* 첫 번째 이미지: 왼쪽 위 기준, z-index 높게 (위로) */}
+                          <div style={{ position: 'absolute', top: 0, left: 0, zIndex: 5 }}>
+                            <img src={photos[0]} style={{ maxWidth: img0Size, maxHeight: img0Size, objectFit: 'contain', boxShadow: '2px 2px 8px rgba(0,0,0,0.3)' }} />
+                            <div 
+                              onMouseDown={(e) => handleResizeStart(e, issue.id, type, 0)}
+                              style={{ 
+                                position: 'absolute', bottom: -4, right: -4, width: 16, height: 16, 
+                                background: type === 'before' ? '#be185d' : '#10b981', 
+                                borderRadius: 3, cursor: 'nwse-resize',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.3)', zIndex: 20
+                              }}
+                            >
+                              <span style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>↘</span>
+                            </div>
+                            <div style={{ position: 'absolute', top: 4, left: 4, background: 'rgba(0,0,0,0.7)', color: 'white', padding: '2px 6px', borderRadius: 3, fontSize: 9, zIndex: 20 }}>
+                              ① {size0}%
+                            </div>
+                          </div>
+                          {/* 두 번째 이미지: 오른쪽 아래 기준, z-index 낮게 (아래로) */}
+                          <div style={{ position: 'absolute', bottom: 0, right: 0, zIndex: 2 }}>
+                            <img src={photos[1]} style={{ maxWidth: img1Size, maxHeight: img1Size, objectFit: 'contain', boxShadow: '2px 2px 8px rgba(0,0,0,0.3)' }} />
+                            <div 
+                              onMouseDown={(e) => handleResizeStart(e, issue.id, type, 1)}
+                              style={{ 
+                                position: 'absolute', bottom: -4, right: -4, width: 16, height: 16, 
+                                background: type === 'before' ? '#f472b6' : '#6ee7b7', 
+                                borderRadius: 3, cursor: 'nwse-resize',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.3)', zIndex: 20
+                              }}
+                            >
+                              <span style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>↘</span>
+                            </div>
+                            <div style={{ position: 'absolute', top: 4, left: 4, background: 'rgba(0,0,0,0.7)', color: 'white', padding: '2px 6px', borderRadius: 3, fontSize: 9, zIndex: 20 }}>
+                              ② {size1}%
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                  };
+                  
+                  return (
+                    <div key={issue.id} style={{ background: 'white', width: 950, borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.4)', overflow: 'hidden' }}>
+                      {/* 페이지 번호 */}
+                      <div style={{ textAlign: 'center', padding: 10, background: '#f8f9fa', color: '#6b7280', fontSize: 12, fontWeight: 600, borderBottom: '1px solid #eee' }}>
+                        페이지 {idx + 2} / {previewIssues.length + 1}
+                      </div>
+                      
+                      <div style={{ padding: '24px 32px' }}>
+                        <h1 style={{ color: '#1e3a5f', fontSize: 26, fontWeight: 800, margin: '0 0 20px 0' }}>Safety / 5S+</h1>
+                        
+                        {/* Finding# */}
+                        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20, fontSize: 14 }}>
+                          <tbody>
+                            <tr>
+                              <td style={{ padding: '10px 14px', width: '15%', fontWeight: 700, border: '1px solid #ddd' }}>Finding#</td>
+                              <td style={{ padding: '10px 14px', width: '35%', border: '1px solid #ddd' }}>{findingNum}</td>
+                              <td style={{ padding: '10px 14px', width: '22%', fontWeight: 700, border: '1px solid #ddd' }}>Location/Dept/Response</td>
+                              <td style={{ padding: '10px 14px', width: '28%', border: '1px solid #ddd' }}>{issue.department} – {issue.manager || 'N/A'}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        
+                        {/* Before/After */}
+                        <table style={{ width: '100%', borderCollapse: 'collapse', overflow: 'visible' }}>
+                          <thead>
+                            <tr>
+                              <th style={{ background: '#be185d', color: 'white', padding: 14, width: '50%', fontSize: 16, fontWeight: 600, border: '1px solid #ccc' }}>Before</th>
+                              <th style={{ background: '#10b981', color: 'white', padding: 14, width: '50%', fontSize: 16, fontWeight: 600, border: '1px solid #ccc' }}>After</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td style={{ border: '1px solid #ddd', padding: 16, height: 340, verticalAlign: 'top', textAlign: 'left', background: '#fafafa', position: 'relative', overflow: 'visible' }}>
+                                {renderResizableImage(issue.issuePhotos, 'before', sizes)}
+                              </td>
+                              <td style={{ border: '1px solid #ddd', padding: 16, height: 340, verticalAlign: 'top', textAlign: 'left', background: '#fafafa', position: 'relative', overflow: 'visible' }}>
+                                {renderResizableImage(issue.actionPhotos, 'after', sizes)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style={{ border: '1px solid #ddd', padding: 14, height: 90, verticalAlign: 'top', fontSize: 14, lineHeight: 1.6 }}>{issue.description || ''}</td>
+                              <td style={{ border: '1px solid #ddd', padding: 14, height: 90, verticalAlign: 'top', fontSize: 14, lineHeight: 1.6 }}>{issue.actionContent || ''}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        
+                        <div style={{ textAlign: 'right', marginTop: 16, fontSize: 13, color: '#6b7280' }}>{idx + 2}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+                
+                {previewIssues.length === 0 && (
+                  <div style={{ background: 'white', width: 950, padding: 60, borderRadius: 4, textAlign: 'center', color: '#666' }}>
+                    해당 기간에 등록된 이슈가 없습니다.
+                  </div>
+                )}
+                
+                <div style={{ height: 40 }} />
+              </div>
+            </div>
+          )}
+
+          {/* 이미지 뷰어 모달 */}
+          {viewerImage && (
+            <div 
+              style={{ 
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+                background: 'rgba(0,0,0,0.95)', 
+                display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                zIndex: 9999,
+                cursor: 'zoom-out'
+              }} 
+              onClick={() => setViewerImage(null)}
+            >
+              <button 
+                onClick={() => setViewerImage(null)}
+                style={{ 
+                  position: 'absolute', top: 20, right: 20, 
+                  background: 'rgba(255,255,255,0.2)', border: 'none', 
+                  color: 'white', fontSize: 24, width: 50, height: 50, 
+                  borderRadius: '50%', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}
+              >
+                ✕
+              </button>
+              <img 
+                src={viewerImage} 
+                style={{ 
+                  maxWidth: '90vw', maxHeight: '90vh', 
+                  objectFit: 'contain', 
+                  borderRadius: 8,
+                  boxShadow: '0 4px 30px rgba(0,0,0,0.5)'
+                }} 
+                alt="" 
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.render(<GembaWalk />, document.getElementById('root'));
+  </script>
+</body>
+</html>
