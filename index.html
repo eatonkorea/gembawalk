@@ -38,7 +38,7 @@
       const [selectedDeptForAction, setSelectedDeptForAction] = useState(null);
       const [isLoading, setIsLoading] = useState(true);
       const [isSaving, setIsSaving] = useState(false);
-      const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, show: false });
+      const [uploadProgress, setUploadProgress] = useState({ uploaded: 0, total: 0, show: false });
       const [adminPw, setAdminPw] = useState('admin123');
       
       // 화면 크기 감지
@@ -51,6 +51,7 @@
       const [supervisors, setSupervisors] = useState([]);
       const [departments, setDepartments] = useState([]);
       const [managers, setManagers] = useState({});
+      const [admins, setAdmins] = useState([]);  // 관리자 목록 [{name, email}, ...]
       const [issues, setIssues] = useState([]);
       
       // 초기 데이터 로드
@@ -69,6 +70,9 @@
           }
           if (data.managers) {
             setManagers(data.managers);
+          }
+          if (data.admins) {
+            setAdmins(data.admins);
           }
           if (data.supervisors && data.supervisors.length > 0) {
             setSupervisors(data.supervisors);
@@ -89,6 +93,22 @@
           alert('데이터를 불러오는데 실패했습니다. 페이지를 새로고침해주세요.');
         }
         setIsLoading(false);
+      };
+      
+      // 날짜 포맷 함수 (ISO → YYYY-MM-DD)
+      const formatDate = (dateStr) => {
+        if (!dateStr) return '';
+        // 이미 YYYY-MM-DD 형식이면 그대로 반환
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+        // ISO 형식이면 앞 10자리만 추출
+        if (dateStr.includes('T')) return dateStr.split('T')[0];
+        // Date 객체로 변환 시도
+        try {
+          const d = new Date(dateStr);
+          return d.toISOString().split('T')[0];
+        } catch {
+          return dateStr;
+        }
       };
       
       // 이미지 리사이즈 함수 (최대 1200px, 품질 80%)
@@ -168,6 +188,9 @@
       const [newManager, setNewManager] = useState('');
       const [newManagerEmail, setNewManagerEmail] = useState('');
       const [selectedDeptForManager, setSelectedDeptForManager] = useState('');
+      
+      const [newAdminName, setNewAdminName] = useState('');
+      const [newAdminEmail, setNewAdminEmail] = useState('');
 
       const [showPasswordModal, setShowPasswordModal] = useState(false);
       const [passwordInput, setPasswordInput] = useState('');
@@ -198,6 +221,12 @@
       const [resizingImage, setResizingImage] = useState(null);
       const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, size: 100 });
       const [viewerImage, setViewerImage] = useState(null); // 이미지 뷰어
+      
+      // 리마인드 탭 상태
+      const [remindSelectedIssues, setRemindSelectedIssues] = useState({});  // { 부서명: [issueId, ...] }
+      const [remindSelectedManagers, setRemindSelectedManagers] = useState({});  // { 부서명: [managerEmail, ...] } - 받는 사람
+      const [remindSelectedCC, setRemindSelectedCC] = useState({});  // { 부서명: [managerEmail, ...] } - CC
+      const [sendingEmail, setSendingEmail] = useState(false);
 
       const styles = {
         container: { minHeight: '100vh', background: 'linear-gradient(135deg, #1e1e2f 0%, #0f0f1a 100%)', color: 'white', padding: isMobile ? 12 : 24 },
@@ -517,6 +546,44 @@
           await fetch(API_URL, {
             method: 'POST',
             body: JSON.stringify({ action: 'saveManagers', managers: updated })
+          });
+        } catch (error) {
+          console.error('삭제 실패:', error);
+        }
+      };
+
+      // 관리자 추가
+      const addAdmin = async () => {
+        if (newAdminName.trim() && newAdminEmail.trim()) {
+          const newAdmin = { name: newAdminName.trim(), email: newAdminEmail.trim() };
+          // 이미 존재하는지 확인
+          if (admins.find(a => a.email === newAdmin.email)) {
+            alert('이미 등록된 이메일입니다.');
+            return;
+          }
+          const updated = [...admins, newAdmin];
+          setAdmins(updated);
+          setNewAdminName('');
+          setNewAdminEmail('');
+          try {
+            await fetch(API_URL, {
+              method: 'POST',
+              body: JSON.stringify({ action: 'saveAdmins', admins: updated })
+            });
+          } catch (error) {
+            console.error('저장 실패:', error);
+          }
+        }
+      };
+      
+      // 관리자 삭제
+      const removeAdmin = async (email) => {
+        const updated = admins.filter(a => a.email !== email);
+        setAdmins(updated);
+        try {
+          await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'saveAdmins', admins: updated })
           });
         } catch (error) {
           console.error('삭제 실패:', error);
@@ -910,9 +977,8 @@
             if (!photos || photos.length === 0) {
               return '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 16px;">No Image</div>';
             } else if (photos.length === 1) {
-              const sizePercent = sizes[type + '0Size'] || 100;
-              const imgSize = Math.round(baseSize * sizePercent / 100);
-              return '<div style="display: flex; align-items: center; justify-content: center; height: 100%;"><img src="' + photos[0] + '" style="max-width: ' + imgSize + 'px; max-height: ' + imgSize + 'px; object-fit: contain;" /></div>';
+              // 1장: 표 셀 영역 안에서 최대 크기 (비율 유지, 가로 480px, 세로 350px 제한)
+              return '<div style="display: flex; align-items: center; justify-content: center; height: 100%;"><img src="' + photos[0] + '" style="max-width: 480px; max-height: 350px; object-fit: contain;" /></div>';
             } else {
               // 2장: 개별 크기, 첫 번째가 위로 (z-index 높게)
               const size0 = sizes[type + '0Size'] || 100;
@@ -1147,6 +1213,7 @@
               <button style={styles.tabBtn(activeTab === 'action')} onClick={() => { setActiveTab('action'); setSelectedDeptForAction(null); }}>{isMobile ? '🔧 조치' : '🔧 조치 입력'}</button>
               <button style={styles.tabBtn(activeTab === 'report')} onClick={() => setActiveTab('report')}>📊 보고서</button>
               {isAdminMode && <button style={styles.tabBtn(activeTab === 'main')} onClick={() => setActiveTab('main')}>{isMobile ? '📋 목록' : '📋 이슈 목록'}</button>}
+              {isAdminMode && <button style={styles.tabBtn(activeTab === 'remind')} onClick={() => setActiveTab('remind')}>{isMobile ? '📧 리마인드' : '📧 리마인드'}</button>}
               {isAdminMode && <button style={styles.tabBtn(activeTab === 'settings')} onClick={() => setActiveTab('settings')}>⚙️ 설정</button>}
             </div>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8, justifyContent: isMobile ? 'flex-end' : 'flex-start' }}>
@@ -1155,7 +1222,7 @@
                   style={{...styles.btnSecondary, padding: isMobile ? '6px 12px' : '8px 16px', fontSize: isMobile ? 11 : 12, background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)'}} 
                   onClick={() => { 
                     setIsAdminMode(false); 
-                    if (activeTab === 'main' || activeTab === 'settings') {
+                    if (activeTab === 'main' || activeTab === 'settings' || activeTab === 'remind') {
                       setActiveTab('action');
                     }
                   }}
@@ -1234,7 +1301,7 @@
                         <td style={styles.td}>
                           <input type="checkbox" checked={selectedIds.includes(issue.id)} onChange={() => toggleSelect(issue.id)} disabled={!selectedIds.includes(issue.id) && selectedIds.length >= 2} style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#6366f1' }} />
                         </td>
-                        <td style={styles.td}><input type="date" style={styles.inlineInput} value={issue.date} onChange={(e) => {
+                        <td style={styles.td}><input type="date" style={styles.inlineInput} value={formatDate(issue.date)} onChange={(e) => {
                           updateIssueField(issue.id, 'date', e.target.value);
                           // Target Date도 자동 업데이트
                           const newDate = new Date(e.target.value);
@@ -1286,11 +1353,16 @@
                             <option value="Complete" style={styles.selectOption}>Complete</option>
                           </select>
                         </td>
-                        <td style={{...styles.td, color: isOverdue ? '#ef4444' : 'inherit', fontWeight: isOverdue ? 600 : 400}}>
-                          {targetDate ? targetDate.split('T')[0] : ''}
+                        <td style={{...styles.td, position: 'relative'}}>
+                          <input 
+                            type="date" 
+                            style={{...styles.inlineInput, color: isOverdue ? '#ef4444' : 'inherit', fontWeight: isOverdue ? 600 : 400}} 
+                            value={formatDate(targetDate)} 
+                            onChange={(e) => updateIssueField(issue.id, 'targetDate', e.target.value)} 
+                          />
                           {isOverdue && <div style={{fontSize: 10, color: '#ef4444'}}>⚠️ 지연</div>}
                         </td>
-                        <td style={styles.td}><input type="date" style={styles.inlineInput} value={issue.improvedDate} onChange={(e) => updateIssueField(issue.id, 'improvedDate', e.target.value)} /></td>
+                        <td style={styles.td}><input type="date" style={styles.inlineInput} value={formatDate(issue.improvedDate)} onChange={(e) => updateIssueField(issue.id, 'improvedDate', e.target.value)} /></td>
                         <td style={styles.td}>
                           <button 
                             style={{...styles.btnDanger, padding: '6px 10px', fontSize: 11}} 
@@ -1305,6 +1377,385 @@
                 </table>
               </div>
             </>
+          )}
+
+          {/* 리마인드 탭 */}
+          {activeTab === 'remind' && (
+            <div style={{ marginTop: 24 }}>
+              <h3 style={{ marginBottom: 20, color: '#ef4444', fontSize: isMobile ? 16 : 18 }}>📧 Target Date 초과 항목</h3>
+              
+              {(() => {
+                // Target Date 지난 이슈만 필터링 (Complete 제외)
+                const overdueIssues = issues.filter(issue => {
+                  const targetDate = issue.targetDate || (() => {
+                    if (issue.date) {
+                      const d = new Date(issue.date);
+                      d.setDate(d.getDate() + 30);
+                      return d.toISOString().split('T')[0];
+                    }
+                    return '';
+                  })();
+                  return targetDate && new Date(targetDate) < new Date() && issue.status !== 'Complete';
+                });
+                
+                // 부서별로 그룹핑
+                const groupedByDept = {};
+                overdueIssues.forEach(issue => {
+                  const dept = issue.department || '미지정';
+                  if (!groupedByDept[dept]) groupedByDept[dept] = [];
+                  groupedByDept[dept].push(issue);
+                });
+                
+                if (overdueIssues.length === 0) {
+                  return (
+                    <div style={{ textAlign: 'center', padding: 60, color: 'rgba(255,255,255,0.4)' }}>
+                      Target Date가 초과된 항목이 없습니다. 🎉
+                    </div>
+                  );
+                }
+                
+                // 발송 가능한 부서 수 계산
+                const deptList = Object.keys(groupedByDept);
+                const readyDepts = deptList.filter(dept => {
+                  const selectedIssues = remindSelectedIssues[dept] || [];
+                  const selectedManagers = remindSelectedManagers[dept] || [];
+                  return selectedIssues.length > 0 && selectedManagers.length > 0;
+                });
+                
+                // 전체 선택된 이슈 수
+                const totalSelectedIssues = Object.values(remindSelectedIssues).flat().length;
+                
+                return (
+                  <>
+                    {deptList.map(dept => {
+                      const deptIssues = groupedByDept[dept];
+                      const deptManagers = managers[dept] || [];
+                      const selectedIssuesForDept = remindSelectedIssues[dept] || [];
+                      const selectedManagersForDept = remindSelectedManagers[dept] || [];
+                      const selectedCCForDept = remindSelectedCC[dept] || [];
+                      
+                      return (
+                        <div key={dept} style={{ 
+                          background: 'rgba(239, 68, 68, 0.1)', 
+                          borderRadius: 12, 
+                          padding: isMobile ? 16 : 24, 
+                          marginBottom: 20,
+                          border: '1px solid rgba(239, 68, 68, 0.3)'
+                        }}>
+                          {/* 부서 헤더 */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <h4 style={{ margin: 0, color: '#ef4444', fontSize: isMobile ? 16 : 18 }}>{dept}</h4>
+                              <span style={{ 
+                                background: 'rgba(239, 68, 68, 0.3)', 
+                                padding: '4px 12px', 
+                                borderRadius: 20, 
+                                fontSize: 12, 
+                                color: '#fca5a5' 
+                              }}>
+                                {deptIssues.length}건 지연
+                              </span>
+                            </div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={selectedIssuesForDept.length === deptIssues.length && deptIssues.length > 0}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setRemindSelectedIssues({...remindSelectedIssues, [dept]: deptIssues.map(i => i.id)});
+                                  } else {
+                                    setRemindSelectedIssues({...remindSelectedIssues, [dept]: []});
+                                  }
+                                }}
+                                style={{ width: 16, height: 16, accentColor: '#ef4444' }}
+                              />
+                              전체 선택
+                            </label>
+                          </div>
+                          
+                          {/* 이슈 목록 */}
+                          <div style={{ marginBottom: 16 }}>
+                            {deptIssues.map(issue => {
+                              const targetDate = formatDate(issue.targetDate) || formatDate(issue.date);
+                              const daysPassed = Math.floor((new Date() - new Date(issue.targetDate || issue.date)) / (1000 * 60 * 60 * 24));
+                              
+                              return (
+                                <div key={issue.id} style={{ 
+                                  display: 'flex', 
+                                  alignItems: 'flex-start', 
+                                  gap: 12, 
+                                  padding: 12, 
+                                  background: 'rgba(0,0,0,0.2)', 
+                                  borderRadius: 8, 
+                                  marginBottom: 8 
+                                }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={selectedIssuesForDept.includes(issue.id)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setRemindSelectedIssues({...remindSelectedIssues, [dept]: [...selectedIssuesForDept, issue.id]});
+                                      } else {
+                                        setRemindSelectedIssues({...remindSelectedIssues, [dept]: selectedIssuesForDept.filter(id => id !== issue.id)});
+                                      }
+                                    }}
+                                    style={{ width: 18, height: 18, accentColor: '#ef4444', marginTop: 2 }}
+                                  />
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 13, marginBottom: 4 }}>{issue.description || '(내용 없음)'}</div>
+                                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
+                                      접수일: {formatDate(issue.date)} | Target: {targetDate} 
+                                      <span style={{ color: '#ef4444', marginLeft: 8 }}>({daysPassed}일 경과)</span>
+                                      {issue.manager && <span> | 담당: {issue.manager}</span>}
+                                    </div>
+                                  </div>
+                                  {issue.issuePhotos && issue.issuePhotos.length > 0 && (
+                                    <img 
+                                      src={issue.issuePhotos[0]} 
+                                      style={{ width: 50, height: 50, objectFit: 'cover', borderRadius: 4, cursor: 'pointer' }}
+                                      onClick={() => setViewerImage(issue.issuePhotos[0])}
+                                      alt=""
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          
+                          {/* 받는 사람 선택 */}
+                          <div style={{ marginBottom: 12, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 8 }}>📬 받는 사람:</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                              {/* 부서 담당자 */}
+                              {deptManagers.length === 0 && admins.length === 0 ? (
+                                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>등록된 담당자가 없습니다. 설정에서 추가하세요.</span>
+                              ) : (
+                                <>
+                                  {deptManagers.map(mgr => (
+                                    <label key={mgr.email} style={{ 
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      gap: 6, 
+                                      padding: '6px 12px', 
+                                      background: selectedManagersForDept.includes(mgr.email) ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255,255,255,0.1)', 
+                                      borderRadius: 20, 
+                                      cursor: selectedCCForDept.includes(mgr.email) ? 'not-allowed' : 'pointer',
+                                      fontSize: 12,
+                                      opacity: selectedCCForDept.includes(mgr.email) ? 0.5 : 1
+                                    }}>
+                                      <input 
+                                        type="checkbox" 
+                                        checked={selectedManagersForDept.includes(mgr.email)}
+                                        disabled={selectedCCForDept.includes(mgr.email)}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            setRemindSelectedManagers({...remindSelectedManagers, [dept]: [...selectedManagersForDept, mgr.email]});
+                                          } else {
+                                            setRemindSelectedManagers({...remindSelectedManagers, [dept]: selectedManagersForDept.filter(em => em !== mgr.email)});
+                                          }
+                                        }}
+                                        style={{ width: 14, height: 14, accentColor: '#6366f1' }}
+                                      />
+                                      {mgr.name} ({mgr.email})
+                                    </label>
+                                  ))}
+                                  {/* 관리자 목록 */}
+                                  {admins.map(admin => (
+                                    <label key={admin.email + '_to'} style={{ 
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      gap: 6, 
+                                      padding: '6px 12px', 
+                                      background: selectedManagersForDept.includes(admin.email) ? 'rgba(234, 179, 8, 0.3)' : 'rgba(234, 179, 8, 0.1)', 
+                                      borderRadius: 20, 
+                                      cursor: selectedCCForDept.includes(admin.email) ? 'not-allowed' : 'pointer',
+                                      fontSize: 12,
+                                      opacity: selectedCCForDept.includes(admin.email) ? 0.5 : 1,
+                                      border: '1px solid rgba(234, 179, 8, 0.3)'
+                                    }}>
+                                      <input 
+                                        type="checkbox" 
+                                        checked={selectedManagersForDept.includes(admin.email)}
+                                        disabled={selectedCCForDept.includes(admin.email)}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            setRemindSelectedManagers({...remindSelectedManagers, [dept]: [...selectedManagersForDept, admin.email]});
+                                          } else {
+                                            setRemindSelectedManagers({...remindSelectedManagers, [dept]: selectedManagersForDept.filter(em => em !== admin.email)});
+                                          }
+                                        }}
+                                        style={{ width: 14, height: 14, accentColor: '#eab308' }}
+                                      />
+                                      👑 {admin.name} ({admin.email})
+                                    </label>
+                                  ))}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* CC 선택 */}
+                          <div style={{ padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 8 }}>📋 CC (참조):</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                              {/* 부서 담당자 */}
+                              {deptManagers.map(mgr => (
+                                <label key={mgr.email + '_cc'} style={{ 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  gap: 6, 
+                                  padding: '6px 12px', 
+                                  background: selectedCCForDept.includes(mgr.email) ? 'rgba(234, 179, 8, 0.3)' : 'rgba(255,255,255,0.1)', 
+                                  borderRadius: 20, 
+                                  cursor: selectedManagersForDept.includes(mgr.email) ? 'not-allowed' : 'pointer',
+                                  fontSize: 12,
+                                  opacity: selectedManagersForDept.includes(mgr.email) ? 0.5 : 1
+                                }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={selectedCCForDept.includes(mgr.email)}
+                                    disabled={selectedManagersForDept.includes(mgr.email)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setRemindSelectedCC({...remindSelectedCC, [dept]: [...selectedCCForDept, mgr.email]});
+                                      } else {
+                                        setRemindSelectedCC({...remindSelectedCC, [dept]: selectedCCForDept.filter(em => em !== mgr.email)});
+                                      }
+                                    }}
+                                    style={{ width: 14, height: 14, accentColor: '#eab308' }}
+                                  />
+                                  {mgr.name} ({mgr.email})
+                                </label>
+                              ))}
+                              {/* 관리자 목록 */}
+                              {admins.map(admin => (
+                                <label key={admin.email + '_cc'} style={{ 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  gap: 6, 
+                                  padding: '6px 12px', 
+                                  background: selectedCCForDept.includes(admin.email) ? 'rgba(234, 179, 8, 0.3)' : 'rgba(234, 179, 8, 0.1)', 
+                                  borderRadius: 20, 
+                                  cursor: selectedManagersForDept.includes(admin.email) ? 'not-allowed' : 'pointer',
+                                  fontSize: 12,
+                                  opacity: selectedManagersForDept.includes(admin.email) ? 0.5 : 1,
+                                  border: '1px solid rgba(234, 179, 8, 0.3)'
+                                }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={selectedCCForDept.includes(admin.email)}
+                                    disabled={selectedManagersForDept.includes(admin.email)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setRemindSelectedCC({...remindSelectedCC, [dept]: [...selectedCCForDept, admin.email]});
+                                      } else {
+                                        setRemindSelectedCC({...remindSelectedCC, [dept]: selectedCCForDept.filter(em => em !== admin.email)});
+                                      }
+                                    }}
+                                    style={{ width: 14, height: 14, accentColor: '#eab308' }}
+                                  />
+                                  👑 {admin.name} ({admin.email})
+                                </label>
+                              ))}
+                              {deptManagers.length === 0 && admins.length === 0 && (
+                                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>등록된 담당자가 없습니다.</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    
+                    {/* 일괄 메일 발송 버튼 */}
+                    <button 
+                      style={{
+                        ...styles.btnPrimary,
+                        width: '100%',
+                        padding: '16px 20px',
+                        fontSize: 16,
+                        background: readyDepts.length > 0 
+                          ? 'linear-gradient(135deg, #ef4444, #dc2626)' 
+                          : 'rgba(255,255,255,0.1)',
+                        cursor: readyDepts.length > 0 ? 'pointer' : 'not-allowed',
+                        opacity: readyDepts.length > 0 ? 1 : 0.5
+                      }}
+                      disabled={readyDepts.length === 0 || sendingEmail}
+                      onClick={async () => {
+                        if (readyDepts.length === 0) return;
+                        
+                        setSendingEmail(true);
+                        let successCount = 0;
+                        let failCount = 0;
+                        
+                        try {
+                          for (const dept of readyDepts) {
+                            const deptIssues = groupedByDept[dept];
+                            const selectedIssuesForDept = remindSelectedIssues[dept] || [];
+                            const selectedManagersForDept = remindSelectedManagers[dept] || [];
+                            const selectedCCForDept = remindSelectedCC[dept] || [];
+                            
+                            const selectedIssueData = deptIssues.filter(i => selectedIssuesForDept.includes(i.id));
+                            
+                            try {
+                              const response = await fetch(API_URL, {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                  action: 'sendRemindEmail',
+                                  department: dept,
+                                  recipients: selectedManagersForDept,
+                                  cc: selectedCCForDept,
+                                  issues: selectedIssueData.map(issue => ({
+                                    date: formatDate(issue.date),
+                                    targetDate: formatDate(issue.targetDate),
+                                    description: issue.description || '',
+                                    manager: issue.manager || '',
+                                    status: issue.status,
+                                    photo: issue.issuePhotos && issue.issuePhotos.length > 0 ? issue.issuePhotos[0] : ''
+                                  }))
+                                })
+                              });
+                              
+                              const result = await response.json();
+                              if (result.success) {
+                                successCount++;
+                              } else {
+                                failCount++;
+                              }
+                            } catch (error) {
+                              failCount++;
+                            }
+                          }
+                          
+                          if (failCount === 0) {
+                            alert(`${successCount}개 부서에 리마인드 메일이 발송되었습니다.`);
+                          } else {
+                            alert(`발송 완료: ${successCount}개 부서 성공, ${failCount}개 부서 실패`);
+                          }
+                          
+                          // 선택 초기화
+                          setRemindSelectedIssues({});
+                          setRemindSelectedManagers({});
+                          setRemindSelectedCC({});
+                          
+                        } catch (error) {
+                          console.error('메일 발송 실패:', error);
+                          alert('메일 발송에 실패했습니다.');
+                        }
+                        setSendingEmail(false);
+                      }}
+                    >
+                      {sendingEmail ? '📧 발송 중...' : `📧 리마인드 메일 일괄 발송 (${readyDepts.length}개 부서, ${totalSelectedIssues}건)`}
+                    </button>
+                    
+                    {readyDepts.length === 0 && (
+                      <div style={{ marginTop: 12, fontSize: 12, color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
+                        * 각 부서에서 이슈와 받는 사람을 선택해주세요
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
           )}
 
           {activeTab === 'action' && (
@@ -1387,7 +1838,7 @@
                           }}>
                             {/* 상단: 일자, 상태, Target Date */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{issue.date} | {issue.supervisor}</div>
+                              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{formatDate(issue.date)} | {issue.supervisor}</div>
                               <span style={{...styles.statusBadge(issue.status), padding: '4px 10px', fontSize: 10}}>
                                 {issue.status === 'Under Review' ? 'Review' : issue.status}
                               </span>
@@ -1493,7 +1944,7 @@
                           
                           return (
                           <tr key={issue.id} style={{ background: issue.status === 'Complete' ? 'rgba(16, 185, 129, 0.05)' : isOverdue ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-                            <td style={styles.td}>{issue.date}</td>
+                            <td style={styles.td}>{formatDate(issue.date)}</td>
                             <td style={styles.td}>{issue.supervisor}</td>
                             <td style={styles.td}>
                               <select style={{...styles.inlineInput, minWidth: 100}} value={issue.manager} onChange={(e) => updateIssueField(issue.id, 'manager', e.target.value)} disabled={issue.status === 'Complete'}>
@@ -1819,6 +2270,30 @@
                   </div>
                 ))}
               </div>
+              
+              {/* 관리자 목록 설정 */}
+              <div style={styles.settingsCard}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#a5b4fc' }}>👑 관리자 목록</h3>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 12 }}>
+                  * 관리자는 리마인드 메일 발송 시 모든 부서에서 수신자로 선택할 수 있습니다.
+                </div>
+                <div style={styles.inputRow}>
+                  <input type="text" placeholder="관리자 이름" value={newAdminName} onChange={(e) => setNewAdminName(e.target.value)} style={{...styles.settingsInput, flex: 1}} />
+                  <input type="email" placeholder="이메일" value={newAdminEmail} onChange={(e) => setNewAdminEmail(e.target.value)} style={{...styles.settingsInput, flex: 1}} />
+                  <button style={styles.btnPrimary} onClick={addAdmin}>추가</button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                  {admins.map(a => (
+                    <span key={a.email} style={{...styles.tag, background: 'rgba(234, 179, 8, 0.2)', border: '1px solid rgba(234, 179, 8, 0.3)'}}>
+                      👑 {a.name} <span style={{ opacity: 0.6, fontSize: 11 }}>({a.email})</span>
+                      <button onClick={() => removeAdmin(a.email)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, padding: 0, marginLeft: 4 }}>×</button>
+                    </span>
+                  ))}
+                  {admins.length === 0 && (
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>등록된 관리자가 없습니다.</span>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -1832,7 +2307,7 @@
                   /* 업로드 진행 중 */
                   <div style={{ padding: '20px 0' }}>
                     <div style={{ marginBottom: 16, textAlign: 'center', fontSize: 14, color: 'rgba(255,255,255,0.8)' }}>
-                      업로드 중... ({uploadProgress.current} / {uploadProgress.total})
+                      업로드 중...
                     </div>
                     <div style={{ 
                       width: '100%', 
@@ -1842,15 +2317,15 @@
                       overflow: 'hidden'
                     }}>
                       <div style={{ 
-                        width: `${(uploadProgress.current / uploadProgress.total) * 100}%`, 
+                        width: `${uploadProgress.total > 0 ? (uploadProgress.uploaded / uploadProgress.total) * 100 : 0}%`, 
                         height: '100%', 
                         background: 'linear-gradient(90deg, #6366f1, #a5b4fc)', 
                         borderRadius: 12,
                         transition: 'width 0.3s ease'
                       }} />
                     </div>
-                    <div style={{ marginTop: 12, textAlign: 'center', fontSize: 24, fontWeight: 700, color: '#a5b4fc' }}>
-                      {Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
+                    <div style={{ marginTop: 12, textAlign: 'center', fontSize: 20, fontWeight: 700, color: '#a5b4fc' }}>
+                      {(uploadProgress.uploaded / 1024).toFixed(0)} KB / {(uploadProgress.total / 1024).toFixed(0)} KB
                     </div>
                   </div>
                 ) : (
@@ -1882,7 +2357,11 @@
                           const files = Array.from(e.target.files);
                           if (files.length === 0) return;
                           
-                          setUploadProgress({ current: 0, total: files.length, show: true });
+                          // 전체 파일 크기 계산
+                          const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+                          setUploadProgress({ uploaded: 0, total: totalSize, show: true });
+                          
+                          let uploadedSize = 0;
                           
                           try {
                             for (let i = 0; i < files.length; i++) {
@@ -1913,18 +2392,21 @@
                               });
                               
                               setIssues(prev => [...prev, issue]);
-                              setUploadProgress(prev => ({ ...prev, current: i + 1 }));
+                              
+                              // 업로드된 용량 업데이트
+                              uploadedSize += file.size;
+                              setUploadProgress(prev => ({ ...prev, uploaded: uploadedSize }));
                             }
                             
                             setTimeout(() => {
-                              setUploadProgress({ current: 0, total: 0, show: false });
+                              setUploadProgress({ uploaded: 0, total: 0, show: false });
                               setShowModal(false);
                               alert(`${files.length}개의 이슈가 등록되었습니다.`);
                             }, 500);
                           } catch (error) {
                             console.error('등록 실패:', error);
                             alert('등록에 실패했습니다.');
-                            setUploadProgress({ current: 0, total: 0, show: false });
+                            setUploadProgress({ uploaded: 0, total: 0, show: false });
                           }
                         }} 
                         style={{ display: 'none' }} 
