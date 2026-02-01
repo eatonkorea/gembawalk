@@ -530,7 +530,7 @@
       };
 
       const verifyPassword = () => {
-        if (pendingDept && passwordInput === pendingDept.password) {
+        if (pendingDept && passwordInput === String(pendingDept.password)) {
           setSelectedDeptForAction(pendingDept.name);
           setShowPasswordModal(false);
           setPasswordInput('');
