@@ -25,6 +25,9 @@
   <div id="root"></div>
   <script type="text/babel">
     const { useState, useEffect } = React;
+    
+    // Google Apps Script API URL
+    const API_URL = 'https://script.google.com/macros/s/AKfycbzFdKGv4zEmwZCJchBWrYand0gYneWFVR2Y1aen0Ir4-xq3rvNy107Qkh21lejUXfS9/exec';
 
     function GembaWalk() {
       const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
@@ -33,6 +36,9 @@
       const [showAdminModal, setShowAdminModal] = useState(false);
       const [adminPassword, setAdminPassword] = useState('');
       const [selectedDeptForAction, setSelectedDeptForAction] = useState(null);
+      const [isLoading, setIsLoading] = useState(true);
+      const [isSaving, setIsSaving] = useState(false);
+      const [adminPw, setAdminPw] = useState('admin123');
       
       // 화면 크기 감지
       useEffect(() => {
@@ -41,48 +47,79 @@
         return () => window.removeEventListener('resize', handleResize);
       }, []);
       
-      const [supervisors, setSupervisors] = useState(['생산관리팀', '품질관리팀', '안전환경팀']);
-      const [departments, setDepartments] = useState([
-        {name: '생산1팀', password: '1234'},
-        {name: '생산2팀', password: '1234'},
-        {name: '품질팀', password: '1234'},
-        {name: '설비팀', password: '1234'}
-      ]);
-      const [managers, setManagers] = useState({
-        '생산1팀': [{name: '김철수', email: 'kim@company.com'}, {name: '이영희', email: 'lee@company.com'}],
-        '생산2팀': [{name: '박민수', email: 'park@company.com'}, {name: '정대리', email: 'jung@company.com'}],
-        '품질팀': [{name: '최품질', email: 'choi@company.com'}, {name: '강검사', email: 'kang@company.com'}],
-        '설비팀': [{name: '윤설비', email: 'yoon@company.com'}]
-      });
-
-      const [issues, setIssues] = useState([
-        {
-          id: 1,
-          date: '2025-01-30',
-          supervisor: '생산관리팀',
-          department: '생산1팀',
-          manager: '김철수',
-          description: '바닥 미끄러움 주의 필요',
-          issuePhotos: [],
-          actionContent: '미끄럼 방지 테이프 부착 완료',
-          actionPhotos: [],
-          status: 'Complete',
-          improvedDate: '2025-01-31'
-        },
-        {
-          id: 2,
-          date: '2025-01-31',
-          supervisor: '안전환경팀',
-          department: '생산2팀',
-          manager: '',
-          description: '소화기 점검 필요',
-          issuePhotos: [],
-          actionContent: '',
-          actionPhotos: [],
-          status: 'Ongoing',
-          improvedDate: ''
+      const [supervisors, setSupervisors] = useState([]);
+      const [departments, setDepartments] = useState([]);
+      const [managers, setManagers] = useState({});
+      const [issues, setIssues] = useState([]);
+      
+      // 초기 데이터 로드
+      useEffect(() => {
+        loadAllData();
+      }, []);
+      
+      const loadAllData = async () => {
+        setIsLoading(true);
+        try {
+          const response = await fetch(API_URL + '?action=getAll');
+          const data = await response.json();
+          
+          if (data.departments && data.departments.length > 0) {
+            setDepartments(data.departments);
+          }
+          if (data.managers) {
+            setManagers(data.managers);
+          }
+          if (data.supervisors && data.supervisors.length > 0) {
+            setSupervisors(data.supervisors);
+          }
+          if (data.issues) {
+            setIssues(data.issues);
+          }
+          if (data.settings) {
+            if (data.settings.monthlyDetails) {
+              setMonthlyDetails(data.settings.monthlyDetails);
+            }
+            if (data.settings.adminPassword) {
+              setAdminPw(data.settings.adminPassword);
+            }
+          }
+        } catch (error) {
+          console.error('데이터 로드 실패:', error);
+          alert('데이터를 불러오는데 실패했습니다. 페이지를 새로고침해주세요.');
         }
-      ]);
+        setIsLoading(false);
+      };
+      
+      // 사진 업로드 (Google Drive)
+      const uploadPhotoToGoogle = async (file) => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = async () => {
+            try {
+              const base64Data = reader.result.split(',')[1];
+              const response = await fetch(API_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                  action: 'uploadPhoto',
+                  fileName: Date.now() + '_' + file.name,
+                  base64Data: base64Data,
+                  mimeType: file.type
+                })
+              });
+              const result = await response.json();
+              if (result.success) {
+                resolve(result.url);
+              } else {
+                reject(new Error(result.error));
+              }
+            } catch (error) {
+              reject(error);
+            }
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      };
       
       const [showModal, setShowModal] = useState(false);
       const [newIssue, setNewIssue] = useState({ date: '', supervisor: '', department: '', manager: '', description: '', issuePhotos: [] });
@@ -160,27 +197,55 @@
         selectOption: { background: '#1e1e3f', color: 'white' }
       };
 
-      const addIssue = () => {
+      const addIssue = async () => {
         if (!newIssue.date || !newIssue.supervisor || !newIssue.department || !newIssue.description) {
           alert('필수 항목을 입력해주세요.');
           return;
         }
-        // Target Date = 일자 + 30일
-        const issueDate = new Date(newIssue.date);
-        issueDate.setDate(issueDate.getDate() + 30);
-        const targetDate = issueDate.toISOString().split('T')[0];
+        setIsSaving(true);
         
-        setIssues([...issues, { ...newIssue, id: Date.now(), actionContent: '', actionPhotos: [], status: 'Ongoing', improvedDate: '', targetDate }]);
-        setNewIssue({ date: '', supervisor: '', department: '', manager: '', description: '', issuePhotos: [] });
-        setShowModal(false);
+        try {
+          // Target Date = 일자 + 30일
+          const issueDate = new Date(newIssue.date);
+          issueDate.setDate(issueDate.getDate() + 30);
+          const targetDate = issueDate.toISOString().split('T')[0];
+          
+          const issue = { ...newIssue, id: Date.now(), actionContent: '', actionPhotos: [], status: 'Ongoing', improvedDate: '', targetDate };
+          
+          // Google에 저장
+          await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'saveIssue', issue })
+          });
+          
+          setIssues([...issues, issue]);
+          setNewIssue({ date: '', supervisor: '', department: '', manager: '', description: '', issuePhotos: [] });
+          setShowModal(false);
+        } catch (error) {
+          console.error('저장 실패:', error);
+          alert('저장에 실패했습니다.');
+        }
+        setIsSaving(false);
       };
 
-      const updateIssueField = (id, field, value) => {
-        setIssues(issues.map(issue => issue.id === id ? { ...issue, [field]: value } : issue));
+      const updateIssueField = async (id, field, value) => {
+        const updatedIssues = issues.map(issue => issue.id === id ? { ...issue, [field]: value } : issue);
+        setIssues(updatedIssues);
+        
+        // Google에 업데이트 (debounce 효과를 위해 setTimeout 사용 가능)
+        const updatedIssue = updatedIssues.find(i => i.id === id);
+        try {
+          await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'updateIssue', issue: updatedIssue })
+          });
+        } catch (error) {
+          console.error('업데이트 실패:', error);
+        }
       };
 
       // 보고 버튼 클릭 시 Under Review로 변경
-      const submitReport = (id) => {
+      const submitReport = async (id) => {
         const issue = issues.find(i => i.id === id);
         if (!issue.actionContent || issue.actionContent.trim() === '') {
           alert('조치내용을 입력해주세요.');
@@ -190,18 +255,63 @@
           alert('조치사진을 등록해주세요.');
           return;
         }
-        setIssues(issues.map(issue => issue.id === id ? { ...issue, status: 'Under Review' } : issue));
-        alert('보고가 완료되었습니다.');
+        
+        const updatedIssue = { ...issue, status: 'Under Review' };
+        setIssues(issues.map(i => i.id === id ? updatedIssue : i));
+        
+        try {
+          await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'updateIssue', issue: updatedIssue })
+          });
+          alert('보고가 완료되었습니다.');
+        } catch (error) {
+          console.error('보고 실패:', error);
+          alert('보고에 실패했습니다.');
+        }
       };
 
-      const handlePhotoUpload = (id, field, files) => {
-        const photos = Array.from(files).map(file => URL.createObjectURL(file));
-        setIssues(issues.map(issue => issue.id === id ? { ...issue, [field]: [...issue[field], ...photos] } : issue));
+      const handlePhotoUpload = async (id, field, files) => {
+        setIsSaving(true);
+        try {
+          const uploadedUrls = [];
+          for (const file of Array.from(files)) {
+            const url = await uploadPhotoToGoogle(file);
+            uploadedUrls.push(url);
+          }
+          
+          const updatedIssues = issues.map(issue => 
+            issue.id === id ? { ...issue, [field]: [...issue[field], ...uploadedUrls] } : issue
+          );
+          setIssues(updatedIssues);
+          
+          // Google에 업데이트
+          const updatedIssue = updatedIssues.find(i => i.id === id);
+          await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'updateIssue', issue: updatedIssue })
+          });
+        } catch (error) {
+          console.error('사진 업로드 실패:', error);
+          alert('사진 업로드에 실패했습니다.');
+        }
+        setIsSaving(false);
       };
 
-      const handleNewIssuePhoto = (files) => {
-        const photos = Array.from(files).map(file => URL.createObjectURL(file));
-        setNewIssue({ ...newIssue, issuePhotos: [...newIssue.issuePhotos, ...photos] });
+      const handleNewIssuePhoto = async (files) => {
+        setIsSaving(true);
+        try {
+          const uploadedUrls = [];
+          for (const file of Array.from(files)) {
+            const url = await uploadPhotoToGoogle(file);
+            uploadedUrls.push(url);
+          }
+          setNewIssue({ ...newIssue, issuePhotos: [...newIssue.issuePhotos, ...uploadedUrls] });
+        } catch (error) {
+          console.error('사진 업로드 실패:', error);
+          alert('사진 업로드에 실패했습니다.');
+        }
+        setIsSaving(false);
       };
 
       const toggleSelect = (id) => {
@@ -233,39 +343,108 @@
         }
       };
 
-      const addSupervisor = () => {
+      const addSupervisor = async () => {
         if (newSupervisor.trim() && !supervisors.includes(newSupervisor.trim())) {
-          setSupervisors([...supervisors, newSupervisor.trim()]);
+          const updated = [...supervisors, newSupervisor.trim()];
+          setSupervisors(updated);
           setNewSupervisor('');
+          try {
+            await fetch(API_URL, {
+              method: 'POST',
+              body: JSON.stringify({ action: 'saveSupervisors', supervisors: updated })
+            });
+          } catch (error) {
+            console.error('저장 실패:', error);
+          }
         }
       };
 
-      const addDepartment = () => {
+      const addDepartment = async () => {
         if (newDepartment.trim() && !departments.find(d => d.name === newDepartment.trim())) {
-          setDepartments([...departments, {name: newDepartment.trim(), password: newDeptPassword || '1234'}]);
-          setManagers({...managers, [newDepartment.trim()]: []});
+          const updated = [...departments, {name: newDepartment.trim(), password: newDeptPassword || '1234'}];
+          const updatedManagers = {...managers, [newDepartment.trim()]: []};
+          setDepartments(updated);
+          setManagers(updatedManagers);
           setNewDepartment('');
           setNewDeptPassword('');
+          try {
+            await fetch(API_URL, {
+              method: 'POST',
+              body: JSON.stringify({ action: 'saveDepartments', departments: updated })
+            });
+            await fetch(API_URL, {
+              method: 'POST',
+              body: JSON.stringify({ action: 'saveManagers', managers: updatedManagers })
+            });
+          } catch (error) {
+            console.error('저장 실패:', error);
+          }
         }
       };
 
-      const addManager = () => {
+      const addManager = async () => {
         if (newManager.trim() && selectedDeptForManager) {
           const newMgr = { name: newManager.trim(), email: newManagerEmail.trim() };
-          setManagers({...managers, [selectedDeptForManager]: [...(managers[selectedDeptForManager] || []), newMgr]});
+          const updated = {...managers, [selectedDeptForManager]: [...(managers[selectedDeptForManager] || []), newMgr]};
+          setManagers(updated);
           setNewManager('');
           setNewManagerEmail('');
+          try {
+            await fetch(API_URL, {
+              method: 'POST',
+              body: JSON.stringify({ action: 'saveManagers', managers: updated })
+            });
+          } catch (error) {
+            console.error('저장 실패:', error);
+          }
         }
       };
 
-      const removeSupervisor = (s) => setSupervisors(supervisors.filter(sup => sup !== s));
-      const removeDepartment = (deptName) => {
-        setDepartments(departments.filter(d => d.name !== deptName));
+      const removeSupervisor = async (s) => {
+        const updated = supervisors.filter(sup => sup !== s);
+        setSupervisors(updated);
+        try {
+          await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'saveSupervisors', supervisors: updated })
+          });
+        } catch (error) {
+          console.error('삭제 실패:', error);
+        }
+      };
+      
+      const removeDepartment = async (deptName) => {
+        const updatedDepts = departments.filter(d => d.name !== deptName);
         const newManagers = {...managers};
         delete newManagers[deptName];
+        setDepartments(updatedDepts);
         setManagers(newManagers);
+        try {
+          await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'saveDepartments', departments: updatedDepts })
+          });
+          await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'saveManagers', managers: newManagers })
+          });
+        } catch (error) {
+          console.error('삭제 실패:', error);
+        }
       };
-      const removeManager = (dept, mgrName) => setManagers({...managers, [dept]: managers[dept].filter(m => m.name !== mgrName)});
+      
+      const removeManager = async (dept, mgrName) => {
+        const updated = {...managers, [dept]: managers[dept].filter(m => m.name !== mgrName)};
+        setManagers(updated);
+        try {
+          await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'saveManagers', managers: updated })
+          });
+        } catch (error) {
+          console.error('삭제 실패:', error);
+        }
+      };
 
       const handleDeptClick = (dept) => {
         setPendingDept(dept);
@@ -291,20 +470,47 @@
         setShowEditPasswordModal(true);
       };
 
-      const saveNewPassword = () => {
+      const saveNewPassword = async () => {
         if (editingDept && editDeptName.trim()) {
           const oldName = editingDept.name;
           const newName = editDeptName.trim();
           
-          setDepartments(departments.map(d => d.name === oldName ? {...d, name: newName, password: newPasswordInput} : d));
+          const updatedDepts = departments.map(d => d.name === oldName ? {...d, name: newName, password: newPasswordInput} : d);
+          setDepartments(updatedDepts);
+          
+          let updatedManagers = managers;
+          let updatedIssues = issues;
           
           if (oldName !== newName) {
-            const newManagers = {...managers};
-            newManagers[newName] = newManagers[oldName] || [];
-            delete newManagers[oldName];
-            setManagers(newManagers);
+            updatedManagers = {...managers};
+            updatedManagers[newName] = updatedManagers[oldName] || [];
+            delete updatedManagers[oldName];
+            setManagers(updatedManagers);
             
-            setIssues(issues.map(issue => issue.department === oldName ? {...issue, department: newName} : issue));
+            updatedIssues = issues.map(issue => issue.department === oldName ? {...issue, department: newName} : issue);
+            setIssues(updatedIssues);
+          }
+          
+          try {
+            await fetch(API_URL, {
+              method: 'POST',
+              body: JSON.stringify({ action: 'saveDepartments', departments: updatedDepts })
+            });
+            if (oldName !== newName) {
+              await fetch(API_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'saveManagers', managers: updatedManagers })
+              });
+              // 이슈들도 업데이트
+              for (const issue of updatedIssues.filter(i => i.department === newName)) {
+                await fetch(API_URL, {
+                  method: 'POST',
+                  body: JSON.stringify({ action: 'updateIssue', issue })
+                });
+              }
+            }
+          } catch (error) {
+            console.error('저장 실패:', error);
           }
           
           setShowEditPasswordModal(false);
@@ -322,24 +528,44 @@
         setShowEditManagerModal(true);
       };
 
-      const saveEditManager = () => {
+      const saveEditManager = async () => {
         if (editingManager && editManagerName.trim()) {
           const oldName = editingManager.name;
           const newName = editManagerName.trim();
           
-          setManagers({
+          const updatedManagers = {
             ...managers,
             [editManagerDept]: managers[editManagerDept].map(m => 
               m.name === oldName ? {name: newName, email: editManagerEmail.trim()} : m
             )
-          });
+          };
+          setManagers(updatedManagers);
           
+          let updatedIssues = issues;
           if (oldName !== newName) {
-            setIssues(issues.map(issue => 
+            updatedIssues = issues.map(issue => 
               issue.department === editManagerDept && issue.manager === oldName 
                 ? {...issue, manager: newName} 
                 : issue
-            ));
+            );
+            setIssues(updatedIssues);
+          }
+          
+          try {
+            await fetch(API_URL, {
+              method: 'POST',
+              body: JSON.stringify({ action: 'saveManagers', managers: updatedManagers })
+            });
+            if (oldName !== newName) {
+              for (const issue of updatedIssues.filter(i => i.manager === newName)) {
+                await fetch(API_URL, {
+                  method: 'POST',
+                  body: JSON.stringify({ action: 'updateIssue', issue })
+                });
+              }
+            }
+          } catch (error) {
+            console.error('저장 실패:', error);
           }
           
           setShowEditManagerModal(false);
@@ -813,8 +1039,28 @@
         e.target.value = '';
       };
 
+      // 로딩 화면
+      if (isLoading) {
+        return (
+          <div style={{...styles.container, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 48, marginBottom: 20 }}>🔄</div>
+              <div style={{ fontSize: 18, color: '#a5b4fc' }}>데이터 로딩 중...</div>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div style={styles.container}>
+          {/* 저장 중 인디케이터 */}
+          {isSaving && (
+            <div style={{ position: 'fixed', top: 20, right: 20, background: 'rgba(99, 102, 241, 0.9)', padding: '10px 20px', borderRadius: 8, zIndex: 9999, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span>💾</span>
+              <span style={{ fontSize: 14 }}>저장 중...</span>
+            </div>
+          )}
+          
           <div style={styles.header}>
             <h1 style={styles.title}>Gemba Walk</h1>
           </div>
@@ -1299,6 +1545,16 @@
                                 style={{ width: '100%', padding: '4px 8px', border: '1px solid #ddd', borderRadius: 4, fontSize: 10, background: 'white' }} 
                                 value={monthlyDetails[detailKey] || ''} 
                                 onChange={(e) => setMonthlyDetails({...monthlyDetails, [detailKey]: e.target.value})}
+                                onBlur={async (e) => {
+                                  try {
+                                    await fetch(API_URL, {
+                                      method: 'POST',
+                                      body: JSON.stringify({ action: 'saveSettings', settings: { monthlyDetails: {...monthlyDetails, [detailKey]: e.target.value}, adminPassword: adminPw } })
+                                    });
+                                  } catch (error) {
+                                    console.error('저장 실패:', error);
+                                  }
+                                }}
                                 placeholder=""
                               />
                             ) : (
@@ -1553,7 +1809,7 @@
                   onChange={(e) => setAdminPassword(e.target.value)}
                   onKeyPress={(e) => {
                     if (e.key === 'Enter') {
-                      if (adminPassword === 'admin123') {
+                      if (adminPassword === adminPw) {
                         setIsAdminMode(true);
                         setShowAdminModal(false);
                         setAdminPassword('');
@@ -1569,7 +1825,7 @@
                 <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
                   <button style={styles.btnSecondary} onClick={() => { setShowAdminModal(false); setAdminPassword(''); }}>취소</button>
                   <button style={styles.btnPrimary} onClick={() => {
-                    if (adminPassword === 'admin123') {
+                    if (adminPassword === adminPw) {
                       setIsAdminMode(true);
                       setShowAdminModal(false);
                       setAdminPassword('');
