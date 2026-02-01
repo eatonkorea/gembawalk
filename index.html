@@ -38,6 +38,7 @@
       const [selectedDeptForAction, setSelectedDeptForAction] = useState(null);
       const [isLoading, setIsLoading] = useState(true);
       const [isSaving, setIsSaving] = useState(false);
+      const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, show: false });
       const [adminPw, setAdminPw] = useState('admin123');
       
       // 화면 크기 감지
@@ -90,35 +91,71 @@
         setIsLoading(false);
       };
       
-      // 사진 업로드 (Google Drive)
-      const uploadPhotoToGoogle = async (file) => {
-        return new Promise((resolve, reject) => {
+      // 이미지 리사이즈 함수 (최대 1200px, 품질 80%)
+      const resizeImage = (file, maxSize = 1200, quality = 0.8) => {
+        return new Promise((resolve) => {
           const reader = new FileReader();
-          reader.onload = async () => {
-            try {
-              const base64Data = reader.result.split(',')[1];
-              const response = await fetch(API_URL, {
-                method: 'POST',
-                body: JSON.stringify({
-                  action: 'uploadPhoto',
-                  fileName: Date.now() + '_' + file.name,
-                  base64Data: base64Data,
-                  mimeType: file.type
-                })
-              });
-              const result = await response.json();
-              if (result.success) {
-                resolve(result.url);
-              } else {
-                reject(new Error(result.error));
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              let width = img.width;
+              let height = img.height;
+              
+              // 리사이즈 필요 여부 확인
+              if (width > maxSize || height > maxSize) {
+                if (width > height) {
+                  height = Math.round((height * maxSize) / width);
+                  width = maxSize;
+                } else {
+                  width = Math.round((width * maxSize) / height);
+                  height = maxSize;
+                }
               }
-            } catch (error) {
-              reject(error);
-            }
+              
+              // Canvas로 리사이즈
+              const canvas = document.createElement('canvas');
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, width, height);
+              
+              // JPEG로 압축 (품질 80%)
+              const base64 = canvas.toDataURL('image/jpeg', quality);
+              resolve({
+                base64Data: base64.split(',')[1],
+                mimeType: 'image/jpeg'
+              });
+            };
+            img.src = e.target.result;
           };
-          reader.onerror = reject;
           reader.readAsDataURL(file);
         });
+      };
+      
+      // 사진 업로드 (Google Drive) - 리사이즈 후 업로드
+      const uploadPhotoToGoogle = async (file) => {
+        try {
+          // 이미지 리사이즈
+          const resized = await resizeImage(file);
+          
+          const response = await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'uploadPhoto',
+              fileName: Date.now() + '_' + file.name.replace(/\.[^.]+$/, '.jpg'),
+              base64Data: resized.base64Data,
+              mimeType: resized.mimeType
+            })
+          });
+          const result = await response.json();
+          if (result.success) {
+            return result.url;
+          } else {
+            throw new Error(result.error);
+          }
+        } catch (error) {
+          throw error;
+        }
       };
       
       const [showModal, setShowModal] = useState(false);
@@ -310,6 +347,46 @@
         } catch (error) {
           console.error('사진 업로드 실패:', error);
           alert('사진 업로드에 실패했습니다.');
+        }
+        setIsSaving(false);
+      };
+
+      // 이슈 삭제 (사진 포함)
+      const deleteIssue = async (id, issuePhotos, actionPhotos) => {
+        if (!confirm('이 이슈를 삭제하시겠습니까?\n사진과 데이터가 모두 삭제됩니다.')) {
+          return;
+        }
+        
+        setIsSaving(true);
+        try {
+          // Google Drive에서 사진 삭제
+          const allPhotos = [...(issuePhotos || []), ...(actionPhotos || [])];
+          for (const url of allPhotos) {
+            // URL에서 fileId 추출 (https://lh3.googleusercontent.com/d/FILE_ID 형식)
+            const match = url.match(/\/d\/([^\/\?]+)/);
+            if (match && match[1]) {
+              const fileId = match[1];
+              await fetch(API_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'deletePhoto', fileId })
+              });
+            }
+          }
+          
+          // Google Sheets에서 이슈 삭제
+          await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'deleteIssue', id })
+          });
+          
+          // 로컬 상태 업데이트
+          setIssues(issues.filter(i => i.id !== id));
+          setSelectedIds(selectedIds.filter(i => i !== id));
+          
+          alert('삭제되었습니다.');
+        } catch (error) {
+          console.error('삭제 실패:', error);
+          alert('삭제에 실패했습니다.');
         }
         setIsSaving(false);
       };
@@ -1105,7 +1182,7 @@
                   <div style={styles.statCard}><div style={styles.statLabel}>Under Review</div><div style={styles.statValue('#6366f1')}>{issues.filter(i => i.status === 'Under Review').length}</div></div>
                   <div style={styles.statCard}><div style={styles.statLabel}>Complete</div><div style={styles.statValue('#10b981')}>{issues.filter(i => i.status === 'Complete').length}</div></div>
                 </div>
-                <button style={styles.btnPrimary} onClick={() => setShowModal(true)}>➕ 새 이슈 등록</button>
+                <button style={styles.btnPrimary} onClick={() => setShowModal(true)}>📷 사진 등록</button>
               </div>
 
               {selectedIds.length > 0 && (
@@ -1123,21 +1200,22 @@
                     <tr>
                       <th style={{...styles.th, width: 40}}></th>
                       <th style={{...styles.th, width: 100}}>일자</th>
-                      <th style={{...styles.th, width: 100}}>주관</th>
-                      <th style={{...styles.th, width: 100}}>부서</th>
-                      <th style={{...styles.th, width: 100}}>담당자</th>
-                      <th style={{...styles.th, minWidth: 180}}>내용(설명)</th>
-                      <th style={{...styles.th, width: 120}}>지적사진</th>
-                      <th style={{...styles.th, minWidth: 180}}>조치내용</th>
-                      <th style={{...styles.th, width: 120}}>조치사진</th>
-                      <th style={{...styles.th, width: 110}}>상태</th>
-                      <th style={{...styles.th, width: 100}}>Target Date</th>
+                      <th style={{...styles.th, width: 90}}>주관</th>
+                      <th style={{...styles.th, width: 90}}>부서</th>
+                      <th style={{...styles.th, width: 90}}>담당자</th>
+                      <th style={{...styles.th, minWidth: 150}}>내용(설명)</th>
+                      <th style={{...styles.th, width: 100}}>지적사진</th>
+                      <th style={{...styles.th, minWidth: 150}}>조치내용</th>
+                      <th style={{...styles.th, width: 100}}>조치사진</th>
+                      <th style={{...styles.th, width: 130}}>상태</th>
+                      <th style={{...styles.th, width: 110}}>Target Date</th>
                       <th style={{...styles.th, width: 110}}>개선날짜</th>
+                      <th style={{...styles.th, width: 60}}>삭제</th>
                     </tr>
                   </thead>
                   <tbody>
                     {issues.length === 0 ? (
-                      <tr><td colSpan="12" style={{...styles.td, textAlign: 'center', padding: 60, color: 'rgba(255,255,255,0.4)'}}>등록된 이슈가 없습니다.</td></tr>
+                      <tr><td colSpan="13" style={{...styles.td, textAlign: 'center', padding: 60, color: 'rgba(255,255,255,0.4)'}}>등록된 이슈가 없습니다.</td></tr>
                     ) : issues.map(issue => {
                       // Target Date가 없으면 일자 + 30일로 계산
                       const targetDate = issue.targetDate || (() => {
@@ -1209,10 +1287,18 @@
                           </select>
                         </td>
                         <td style={{...styles.td, color: isOverdue ? '#ef4444' : 'inherit', fontWeight: isOverdue ? 600 : 400}}>
-                          {targetDate}
+                          {targetDate ? targetDate.split('T')[0] : ''}
                           {isOverdue && <div style={{fontSize: 10, color: '#ef4444'}}>⚠️ 지연</div>}
                         </td>
                         <td style={styles.td}><input type="date" style={styles.inlineInput} value={issue.improvedDate} onChange={(e) => updateIssueField(issue.id, 'improvedDate', e.target.value)} /></td>
+                        <td style={styles.td}>
+                          <button 
+                            style={{...styles.btnDanger, padding: '6px 10px', fontSize: 11}} 
+                            onClick={() => deleteIssue(issue.id, issue.issuePhotos, issue.actionPhotos)}
+                          >
+                            🗑️
+                          </button>
+                        </td>
                       </tr>
                     )})}
                   </tbody>
@@ -1352,7 +1438,7 @@
                             {/* 하단: Target Date, 보고 버튼 */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
                               <div style={{ fontSize: 11, color: isOverdue ? '#ef4444' : 'rgba(255,255,255,0.6)' }}>
-                                Target: {targetDate} {isOverdue && '⚠️ 지연'}
+                                Target: {targetDate ? targetDate.split('T')[0] : ''} {isOverdue && '⚠️ 지연'}
                               </div>
                               {issue.status === 'Complete' ? (
                                 <span style={{ padding: '6px 12px', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>✓ 완료</span>
@@ -1441,7 +1527,7 @@
                               </span>
                             </td>
                             <td style={{...styles.td, color: isOverdue ? '#ef4444' : 'inherit', fontWeight: isOverdue ? 600 : 400, fontSize: 12}}>
-                              {targetDate}
+                              {targetDate ? targetDate.split('T')[0] : ''}
                               {isOverdue && <div style={{fontSize: 10, color: '#ef4444'}}>⚠️ 지연</div>}
                             </td>
                             <td style={styles.td}>
@@ -1738,37 +1824,117 @@
 
           {/* 새 이슈 등록 모달 */}
           {showModal && (
-            <div style={styles.modalOverlay} onClick={() => setShowModal(false)}>
+            <div style={styles.modalOverlay} onClick={() => !uploadProgress.show && setShowModal(false)}>
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-                <h2 style={{ margin: '0 0 24px 0', fontSize: 20, fontWeight: 600 }}>새 이슈 등록</h2>
-                <input type="date" style={styles.input} value={newIssue.date} onChange={(e) => setNewIssue({...newIssue, date: e.target.value})} />
-                <select style={styles.input} value={newIssue.supervisor} onChange={(e) => setNewIssue({...newIssue, supervisor: e.target.value})}>
-                  <option value="" style={styles.selectOption}>주관 선택</option>
-                  {supervisors.map(s => <option key={s} value={s} style={styles.selectOption}>{s}</option>)}
-                </select>
-                <select style={styles.input} value={newIssue.department} onChange={(e) => setNewIssue({...newIssue, department: e.target.value, manager: ''})}>
-                  <option value="" style={styles.selectOption}>부서 선택</option>
-                  {departments.map(d => <option key={d.name} value={d.name} style={styles.selectOption}>{d.name}</option>)}
-                </select>
-                <select style={styles.input} value={newIssue.manager} onChange={(e) => setNewIssue({...newIssue, manager: e.target.value})}>
-                  <option value="" style={styles.selectOption}>담당자 선택</option>
-                  {(managers[newIssue.department] || []).map(m => <option key={m.name} value={m.name} style={styles.selectOption}>{m.name}</option>)}
-                </select>
-                <textarea style={styles.textarea} placeholder="내용(설명)" value={newIssue.description} onChange={(e) => setNewIssue({...newIssue, description: e.target.value})} />
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>지적 사진</label>
-                  <div style={styles.photoGrid}>
-                    {newIssue.issuePhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage(p)} />)}
+                <h2 style={{ margin: '0 0 24px 0', fontSize: 20, fontWeight: 600 }}>📷 사진 등록</h2>
+                
+                {uploadProgress.show ? (
+                  /* 업로드 진행 중 */
+                  <div style={{ padding: '20px 0' }}>
+                    <div style={{ marginBottom: 16, textAlign: 'center', fontSize: 14, color: 'rgba(255,255,255,0.8)' }}>
+                      업로드 중... ({uploadProgress.current} / {uploadProgress.total})
+                    </div>
+                    <div style={{ 
+                      width: '100%', 
+                      height: 24, 
+                      background: 'rgba(255,255,255,0.1)', 
+                      borderRadius: 12, 
+                      overflow: 'hidden'
+                    }}>
+                      <div style={{ 
+                        width: `${(uploadProgress.current / uploadProgress.total) * 100}%`, 
+                        height: '100%', 
+                        background: 'linear-gradient(90deg, #6366f1, #a5b4fc)', 
+                        borderRadius: 12,
+                        transition: 'width 0.3s ease'
+                      }} />
+                    </div>
+                    <div style={{ marginTop: 12, textAlign: 'center', fontSize: 24, fontWeight: 700, color: '#a5b4fc' }}>
+                      {Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
+                    </div>
                   </div>
-                  <label style={{ display: 'inline-block', marginTop: 8, padding: '8px 16px', background: 'rgba(255,255,255,0.1)', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
-                    📷 사진 추가
-                    <input type="file" accept="image/*" multiple onChange={(e) => handleNewIssuePhoto(e.target.files)} style={{ display: 'none' }} />
-                  </label>
-                </div>
-                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-                  <button style={styles.btnSecondary} onClick={() => setShowModal(false)}>취소</button>
-                  <button style={styles.btnPrimary} onClick={addIssue}>등록</button>
-                </div>
+                ) : (
+                  /* 사진 선택 */
+                  <>
+                    <p style={{ marginBottom: 16, color: 'rgba(255,255,255,0.7)', fontSize: 14 }}>
+                      사진을 선택하면 각 사진당 이슈가 자동 생성됩니다.
+                    </p>
+                    <label style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '40px 20px', 
+                      background: 'rgba(255,255,255,0.05)', 
+                      border: '2px dashed rgba(255,255,255,0.3)',
+                      borderRadius: 12, 
+                      cursor: 'pointer', 
+                      fontSize: 14,
+                      marginBottom: 16
+                    }}>
+                      <span style={{ fontSize: 48, marginBottom: 12 }}>📷</span>
+                      <span style={{ color: '#a5b4fc', fontWeight: 500 }}>사진 선택 (여러 장 가능)</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        multiple 
+                        onChange={async (e) => {
+                          const files = Array.from(e.target.files);
+                          if (files.length === 0) return;
+                          
+                          setUploadProgress({ current: 0, total: files.length, show: true });
+                          
+                          try {
+                            for (let i = 0; i < files.length; i++) {
+                              const file = files[i];
+                              const url = await uploadPhotoToGoogle(file);
+                              const today = new Date().toISOString().split('T')[0];
+                              const targetDate = new Date();
+                              targetDate.setDate(targetDate.getDate() + 30);
+                              
+                              const issue = {
+                                id: Date.now() + Math.random(),
+                                date: today,
+                                supervisor: '',
+                                department: '',
+                                manager: '',
+                                description: '',
+                                issuePhotos: [url],
+                                actionPhotos: [],
+                                actionContent: '',
+                                status: 'Ongoing',
+                                improvedDate: '',
+                                targetDate: targetDate.toISOString().split('T')[0]
+                              };
+                              
+                              await fetch(API_URL, {
+                                method: 'POST',
+                                body: JSON.stringify({ action: 'saveIssue', issue })
+                              });
+                              
+                              setIssues(prev => [...prev, issue]);
+                              setUploadProgress(prev => ({ ...prev, current: i + 1 }));
+                            }
+                            
+                            setTimeout(() => {
+                              setUploadProgress({ current: 0, total: 0, show: false });
+                              setShowModal(false);
+                              alert(`${files.length}개의 이슈가 등록되었습니다.`);
+                            }, 500);
+                          } catch (error) {
+                            console.error('등록 실패:', error);
+                            alert('등록에 실패했습니다.');
+                            setUploadProgress({ current: 0, total: 0, show: false });
+                          }
+                        }} 
+                        style={{ display: 'none' }} 
+                      />
+                    </label>
+                    <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                      <button style={styles.btnSecondary} onClick={() => setShowModal(false)}>닫기</button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
