@@ -214,13 +214,22 @@
       const [showPrintModal, setShowPrintModal] = useState(false);
       const [printYear, setPrintYear] = useState(new Date().getFullYear());
       const [printMonth, setPrintMonth] = useState('All');
+      const [auditDate, setAuditDate] = useState('');
+      const [auditorName, setAuditorName] = useState('James Hwang');
+      const [auditorTitle, setAuditorTitle] = useState('Plant Manager');
       const [showPreview, setShowPreview] = useState(false);
       const [previewIssues, setPreviewIssues] = useState([]);
       const [imageSizes, setImageSizes] = useState({});
       const [currentPreviewPage, setCurrentPreviewPage] = useState(0);
       const [resizingImage, setResizingImage] = useState(null);
       const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, size: 100 });
-      const [viewerImage, setViewerImage] = useState(null); // 이미지 뷰어
+      const [viewerImage, setViewerImage] = useState(null); // 이미지 뷰어 {src, issueId, type, index}
+      const [annotTool, setAnnotTool] = useState(''); // '', 'circle', 'rect', 'arrow'
+      const [annotColor, setAnnotColor] = useState('#ff0000');
+      const [annotShapes, setAnnotShapes] = useState([]);
+      const [annotDrawing, setAnnotDrawing] = useState(null); // {startX, startY}
+      const canvasRef = React.useRef(null);
+      const annotImgRef = React.useRef(null);
       
       // 리마인드 탭 상태
       const [remindSelectedIssues, setRemindSelectedIssues] = useState({});  // { 부서명: [issueId, ...] }
@@ -310,8 +319,13 @@
         }
       };
 
-      // 보고 버튼 클릭 시 Under Review로 변경
-      const submitReport = async (id) => {
+      // 보고 버튼 클릭 시 - 수신자 선택 모달 열기
+      const [reportModalIssueId, setReportModalIssueId] = useState(null);
+      const [reportRecipients, setReportRecipients] = useState([]);
+      const [reportCC, setReportCC] = useState([]);
+      const [sendingReport, setSendingReport] = useState(false);
+
+      const openReportModal = (id) => {
         const issue = issues.find(i => i.id === id);
         if (!issue.actionContent || issue.actionContent.trim() === '') {
           alert('조치내용을 입력해주세요.');
@@ -321,20 +335,74 @@
           alert('조치사진을 등록해주세요.');
           return;
         }
+        // CC에 관리자 강제 포함
+        setReportCC(admins.filter(a => a.email).map(a => a.email));
+        setReportRecipients([]);
+        setReportModalIssueId(id);
+      };
+
+      const submitReportWithEmail = async () => {
+        if (reportRecipients.length === 0) {
+          alert('수신자를 1명 이상 선택해주세요.');
+          return;
+        }
+        const issue = issues.find(i => i.id === reportModalIssueId);
+        if (!issue) return;
         
+        setSendingReport(true);
         const updatedIssue = { ...issue, status: 'Under Review' };
-        setIssues(issues.map(i => i.id === id ? updatedIssue : i));
         
         try {
+          // 1. 이슈 상태 업데이트
           await fetch(API_URL, {
             method: 'POST',
             body: JSON.stringify({ action: 'updateIssue', issue: updatedIssue })
           });
-          alert('보고가 완료되었습니다.');
+          
+          // 2. 조치완료 메일 발송
+          const response = await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'sendReportEmail',
+              department: issue.department,
+              recipients: reportRecipients,
+              cc: reportCC,
+              issue: {
+                findingNum: (() => {
+                  const d = safeParseDate(issue.date);
+                  const deptIssues = issues.filter(i => {
+                    const id2 = safeParseDate(i.date);
+                    return id2.year === d.year && id2.month === d.month;
+                  });
+                  const idx = deptIssues.findIndex(i => i.id === issue.id);
+                  return String(d.year).slice(-2) + String(d.month+1).padStart(2,'0') + '-' + String((idx >= 0 ? idx : 0)+1).padStart(2,'0');
+                })(),
+                date: issue.date,
+                targetDate: issue.targetDate || '',
+                description: issue.description || '',
+                actionContent: issue.actionContent || '',
+                manager: issue.manager || '',
+                beforePhoto: issue.issuePhotos && issue.issuePhotos.length > 0 ? issue.issuePhotos[0] : '',
+                afterPhoto: issue.actionPhotos && issue.actionPhotos.length > 0 ? issue.actionPhotos[0] : ''
+              }
+            })
+          });
+          
+          const result = await response.json();
+          
+          setIssues(issues.map(i => i.id === reportModalIssueId ? updatedIssue : i));
+          setReportModalIssueId(null);
+          
+          if (result.success) {
+            alert('보고 완료! 조치완료 메일이 발송되었습니다.');
+          } else {
+            alert('보고는 완료되었으나, 메일 발송에 실패했습니다: ' + (result.error || ''));
+          }
         } catch (error) {
           console.error('보고 실패:', error);
           alert('보고에 실패했습니다.');
         }
+        setSendingReport(false);
       };
 
       const handlePhotoUpload = async (id, field, files) => {
@@ -723,20 +791,68 @@
       const currentYear = reportYear;
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'];
 
+      // 안전한 날짜 파서 (timezone 이슈 방지)
+      const safeParseDate = (dateStr) => {
+        if (!dateStr) return { year: 0, month: -1, day: 0 };
+        const s = String(dateStr);
+        // YYYY-MM-DD 형식이면 직접 파싱
+        const match = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+        if (match) {
+          return { year: parseInt(match[1]), month: parseInt(match[2]) - 1, day: parseInt(match[3]) };
+        }
+        // 그 외 형식은 Date 객체 사용 (로컬 타임존)
+        const d = new Date(s);
+        return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate() };
+      };
+
       const getMonthStats = (monthIndex) => {
         const monthIssues = issues.filter(i => {
-          const d = new Date(i.date);
-          return d.getFullYear() === currentYear && d.getMonth() === monthIndex;
+          const d = safeParseDate(i.date);
+          return d.year === currentYear && d.month === monthIndex;
         });
         const total = monthIssues.length;
         const closed = monthIssues.filter(i => i.status === 'Complete').length;
         const open = total - closed;
         const closeRate = total > 0 ? Math.round((closed / total) * 100) : 0;
-        return { total, closed, open, closeRate };
+        
+        // Close Ratio 색상 계산
+        let ratioColor = '';
+        if (total > 0) {
+          if (open === 0) {
+            ratioColor = '#00ff00'; // 전부 완료 → 초록
+          } else {
+            const today = new Date();
+            let maxOverdue = 0;
+            const openIssues = monthIssues.filter(i => i.status !== 'Complete');
+            openIssues.forEach(issue => {
+              const td = issue.targetDate || (() => {
+                if (issue.date) {
+                  const dp = safeParseDate(issue.date);
+                  const dd = new Date(dp.year, dp.month, dp.day + 30);
+                  return dd.getFullYear() + '-' + String(dd.getMonth()+1).padStart(2,'0') + '-' + String(dd.getDate()).padStart(2,'0');
+                }
+                return '';
+              })();
+              if (td && new Date(td) < today) {
+                const days = Math.floor((today - new Date(td)) / (1000 * 60 * 60 * 24));
+                if (days > maxOverdue) maxOverdue = days;
+              }
+            });
+            
+            if (maxOverdue > 90) {
+              ratioColor = '#ff0000'; // 91일+ → 빨강
+            } else if (maxOverdue > 0) {
+              ratioColor = '#ffff00'; // 1~90일 → 노랑
+            }
+            // Target Date 안 지남 → 흰색 (ratioColor 빈값 유지)
+          }
+        }
+        
+        return { total, closed, open, closeRate, ratioColor };
       };
 
       const getYearlyTotal = () => {
-        const yearIssues = issues.filter(i => new Date(i.date).getFullYear() === currentYear);
+        const yearIssues = issues.filter(i => safeParseDate(i.date).year === currentYear);
         const total = yearIssues.length;
         const closed = yearIssues.filter(i => i.status === 'Complete').length;
         const open = total - closed;
@@ -752,17 +868,17 @@
         const monthIndex = monthNames.indexOf(printMonth);
         
         const filtered = issues.filter(i => {
-          const d = new Date(i.date);
-          if (printMonth === 'All') return d.getFullYear() === printYear;
-          return d.getFullYear() === printYear && d.getMonth() === monthIndex;
+          const d = safeParseDate(i.date);
+          if (printMonth === 'All') return d.year === printYear;
+          return d.year === printYear && d.month === monthIndex;
         });
         
         // 이미지 크기 초기화 (각 사진별 개별 크기)
         const sizes = {};
         filtered.forEach((issue, idx) => {
           sizes[issue.id] = { 
-            before0Size: 100, before1Size: 100, 
-            after0Size: 100, after1Size: 100 
+            before0W: 100, before0H: 100, before1W: 100, before1H: 100, 
+            after0W: 100, after0H: 100, after1W: 100, after1H: 100 
           };
         });
         setImageSizes(sizes);
@@ -783,13 +899,15 @@
       };
 
       // 이미지 리사이즈 시작
-      const handleResizeStart = (e, issueId, type, photoIdx) => {
+      const handleResizeStart = (e, issueId, type, photoIdx, axis) => {
         e.preventDefault();
         e.stopPropagation();
-        const sizeKey = type + photoIdx + 'Size';
-        const currentSize = imageSizes[issueId]?.[sizeKey] || 100;
-        setResizingImage({ issueId, type, photoIdx, sizeKey });
-        setResizeStart({ x: e.clientX, y: e.clientY, size: currentSize });
+        const wKey = type + photoIdx + 'W';
+        const hKey = type + photoIdx + 'H';
+        const currentW = imageSizes[issueId]?.[wKey] || 100;
+        const currentH = imageSizes[issueId]?.[hKey] || 100;
+        setResizingImage({ issueId, type, photoIdx, wKey, hKey, axis });
+        setResizeStart({ x: e.clientX, y: e.clientY, w: currentW, h: currentH });
       };
 
       // 이미지 리사이즈 중
@@ -797,13 +915,18 @@
         if (!resizingImage) return;
         const deltaX = e.clientX - resizeStart.x;
         const deltaY = e.clientY - resizeStart.y;
-        const delta = Math.max(deltaX, deltaY);
-        const newSize = Math.min(250, Math.max(20, resizeStart.size + delta / 2));
+        const updates = {};
+        if (resizingImage.axis === 'w' || resizingImage.axis === 'both') {
+          updates[resizingImage.wKey] = Math.round(Math.min(250, Math.max(20, resizeStart.w + deltaX / 2)));
+        }
+        if (resizingImage.axis === 'h' || resizingImage.axis === 'both') {
+          updates[resizingImage.hKey] = Math.round(Math.min(250, Math.max(20, resizeStart.h + deltaY / 2)));
+        }
         setImageSizes(prev => ({
           ...prev,
           [resizingImage.issueId]: {
             ...prev[resizingImage.issueId],
-            [resizingImage.sizeKey]: Math.round(newSize)
+            ...updates
           }
         }));
       };
@@ -826,16 +949,16 @@
           filteredIssues = previewIssues;
         } else {
           filteredIssues = issues.filter(i => {
-            const d = new Date(i.date);
-            if (printMonth === 'All') return d.getFullYear() === printYear;
-            return d.getFullYear() === printYear && d.getMonth() === monthIndex;
+            const d = safeParseDate(i.date);
+            if (printMonth === 'All') return d.year === printYear;
+            return d.year === printYear && d.month === monthIndex;
           });
           // 기본 이미지 크기 설정 (개별 사진별)
           const sizes = {};
           filteredIssues.forEach((issue) => {
             sizes[issue.id] = { 
-              before0Size: 100, before1Size: 100, 
-              after0Size: 100, after1Size: 100 
+              before0W: 100, before0H: 100, before1W: 100, before1H: 100, 
+              after0W: 100, after0H: 100, after1W: 100, after1H: 100 
             };
           });
           setImageSizes(sizes);
@@ -843,9 +966,9 @@
 
         // Finding# 생성 함수
         const generateFindingNumber = (issue, idx) => {
-          const d = new Date(issue.date);
-          const yy = String(d.getFullYear()).slice(-2);
-          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const d = safeParseDate(issue.date);
+          const yy = String(d.year).slice(-2);
+          const mm = String(d.month + 1).padStart(2, '0');
           const num = String(idx + 1).padStart(2, '0');
           return yy + mm + '-' + num;
         };
@@ -853,18 +976,53 @@
         // 월별 통계 계산
         const getMonthData = (idx) => {
           const monthIssues = issues.filter(i => {
-            const d = new Date(i.date);
-            return d.getFullYear() === printYear && d.getMonth() === idx;
+            const d = safeParseDate(i.date);
+            return d.year === printYear && d.month === idx;
           });
           const total = monthIssues.length;
           const closed = monthIssues.filter(i => i.status === 'Complete').length;
           const open = total - closed;
           const ratio = total > 0 ? Math.round((closed / total) * 100) + '%' : '';
-          return { total, closed, open, ratio };
+          
+          // Close Ratio 색상 계산
+          let ratioColor = '';
+          if (total > 0) {
+            if (open === 0) {
+              // 전부 완료 → 초록
+              ratioColor = '#00ff00';
+            } else {
+              // 오픈 이슈 중 가장 오래된 지연일수 확인
+              const today = new Date();
+              let maxOverdue = 0;
+              const openIssues = monthIssues.filter(i => i.status !== 'Complete');
+              openIssues.forEach(issue => {
+                const td = issue.targetDate || (() => {
+                  if (issue.date) {
+                    const dp = safeParseDate(issue.date);
+                    const dd = new Date(dp.year, dp.month, dp.day + 30);
+                    return dd.getFullYear() + '-' + String(dd.getMonth()+1).padStart(2,'0') + '-' + String(dd.getDate()).padStart(2,'0');
+                  }
+                  return '';
+                })();
+                if (td && new Date(td) < today) {
+                  const days = Math.floor((today - new Date(td)) / (1000 * 60 * 60 * 24));
+                  if (days > maxOverdue) maxOverdue = days;
+                }
+              });
+              
+              if (maxOverdue > 90) {
+                ratioColor = '#ff0000'; // 91일 이상 → 빨강
+              } else if (maxOverdue > 0) {
+                ratioColor = '#ffff00'; // 1~90일 → 노랑
+              }
+            }
+          }
+          
+          return { total, closed, open, ratio, ratioColor };
         };
 
-        const yearTotal = issues.filter(i => new Date(i.date).getFullYear() === printYear).length;
-        const yearClosed = issues.filter(i => new Date(i.date).getFullYear() === printYear && i.status === 'Complete').length;
+        const yearTotal = issues.filter(i => safeParseDate(i.date).year === printYear).length;
+        const yearClosed = issues.filter(i => safeParseDate(i.date).year === printYear && i.status === 'Complete').length;
         const yearOpen = yearTotal - yearClosed;
 
         // 부서별 통계
@@ -872,11 +1030,14 @@
           const deptIssues = filteredIssues.filter(i => i.department === deptName);
           const total = deptIssues.length;
           const closed = deptIssues.filter(i => i.status === 'Complete').length;
+          const rateNum = total > 0 ? Math.round((closed / total) * 100) : 0;
+          const rateBg = total === 0 ? '' : rateNum === 100 ? 'background:#00ff00;' : 'background:#ffff00;';
           return {
             ofi: total,
             open: total - closed,
             closed: closed,
-            rate: total > 0 ? Math.round((closed / total) * 100) + '%' : '0%'
+            rate: rateNum + '%',
+            rateBg: rateBg
           };
         };
 
@@ -884,80 +1045,99 @@
         const allClosed = filteredIssues.filter(i => i.status === 'Complete').length;
         const allOpen = allOfi - allClosed;
         const allRate = allOfi > 0 ? Math.round((allClosed / allOfi) * 100) + '%' : '0%';
+        const allRateBg = allOfi === 0 ? '' : (allClosed === allOfi ? 'background:#00ff00;' : 'background:#ffff00;');
 
         // 요약 페이지 HTML
         const summaryHTML = `
-          <div id="pdf-content" style="width: 1100px; padding: 30px; background: white; font-family: Arial, sans-serif; position: relative; box-sizing: border-box;">
-            <h1 style="color: #1e3a5f; font-size: 32px; font-weight: 800; margin-bottom: 25px;">EHS & Lean Gemba Walk Status</h1>
+          <div id="pdf-content" style="width: 1100px; padding: 30px 40px; background: white; font-family: Arial, sans-serif; position: relative; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+              <h1 style="color: #1e3a5f; font-size: 32px; font-weight: 800; margin-bottom: 25px;">EHS & Lean Gemba Walk Status</h1>
+              <table style="border-collapse: collapse; font-size: 13px;">
+                <tr>
+                  <td style="border: 1px solid #333; padding: 6px 10px; text-align: center;"><span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background: #00ff00;"></span></td>
+                  <td style="border: 1px solid #333; padding: 6px 10px;">Completed</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #333; padding: 6px 10px; text-align: center;"><span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background: #ffff00;"></span></td>
+                  <td style="border: 1px solid #333; padding: 6px 10px;">Delay(within90)</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #333; padding: 6px 10px; text-align: center;"><span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background: #ff0000;"></span></td>
+                  <td style="border: 1px solid #333; padding: 6px 10px;">Delay(Overdue91)</td>
+                </tr>
+              </table>
+            </div>
             
-            <h3 style="font-size: 14px; margin: 20px 0 10px 0; font-weight: 600;">EHS Gemba Audit status</h3>
+            <h3 style="font-size: 20px; margin: 20px 0 10px 0; font-weight: 700;">EHS Gemba Audit status</h3>
             <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 30px;">
               <thead>
                 <tr>
-                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #ccc; width: 70px;">Month</th>
-                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #ccc; width: 100px;">Finding Total</th>
-                  <th colspan="2" style="background: #be185d; color: white; padding: 8px; border: 1px solid #ccc;">Corrective Action</th>
-                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #ccc; width: 100px;">Close Ratio</th>
-                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #ccc;">Detail (Open issues)</th>
+                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #333; width: 70px;">Month</th>
+                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #333; width: 100px;">Finding Total</th>
+                  <th colspan="2" style="background: #be185d; color: white; padding: 8px; border: 1px solid #333;">Corrective Action</th>
+                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #333; width: 100px;">Close Ratio</th>
+                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #333;">Detail (Open issues)</th>
                 </tr>
                 <tr>
-                  <th style="background: #be185d; color: white; padding: 8px; border: 1px solid #ccc; width: 80px;">Close #</th>
-                  <th style="background: #be185d; color: white; padding: 8px; border: 1px solid #ccc; width: 80px;">Open #</th>
+                  <th style="background: #be185d; color: white; padding: 8px; border: 1px solid #333; width: 80px;">Close #</th>
+                  <th style="background: #be185d; color: white; padding: 8px; border: 1px solid #333; width: 80px;">Open #</th>
                 </tr>
               </thead>
               <tbody>
                 ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'].map((month, idx) => {
                   const data = getMonthData(idx);
                   const detailKey = printYear + '-' + month;
-                  return '<tr><td style="border: 1px solid #ccc; padding: 10px 8px; font-weight: 600;">' + month + '</td><td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center;">' + (data.total || '') + '</td><td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center;">' + (data.closed || '') + '</td><td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center;">' + (data.open || '') + '</td><td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center;">' + data.ratio + '</td><td style="border: 1px solid #ccc; padding: 10px 8px; font-size: 12px; color: #666;">' + (monthlyDetails[detailKey] || '') + '</td></tr>';
+                  const ratioBg = data.ratioColor ? 'background:' + data.ratioColor + ';' : '';
+                  const ratioFontColor = data.ratioColor === '#ff0000' ? 'color: white;' : '';
+                  return '<tr><td style="border: 1px solid #333; padding: 10px 8px; font-weight: 600; text-align: center;">' + month + '</td><td style="border: 1px solid #333; padding: 10px 8px; text-align: center;">' + (data.total || '') + '</td><td style="border: 1px solid #333; padding: 10px 8px; text-align: center;">' + (data.closed || '') + '</td><td style="border: 1px solid #333; padding: 10px 8px; text-align: center;">' + (data.open || '') + '</td><td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;' + ratioBg + ratioFontColor + '">' + data.ratio + '</td><td style="border: 1px solid #333; padding: 10px 8px; font-size: 12px; color: #666;">' + (monthlyDetails[detailKey] || '') + '</td></tr>';
                 }).join('')}
                 <tr style="background: #fef9c3;">
-                  <td style="border: 1px solid #ccc; padding: 10px 8px; font-weight: 700;">Total</td>
-                  <td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; font-weight: 700;">${yearTotal}</td>
-                  <td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; font-weight: 700;">${yearClosed}</td>
-                  <td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; font-weight: 700;">${yearOpen}</td>
-                  <td style="border: 1px solid #ccc; padding: 10px 8px;"></td>
-                  <td style="border: 1px solid #ccc; padding: 10px 8px;"></td>
+                  <td style="border: 1px solid #333; padding: 10px 8px; font-weight: 700; text-align: center;">Total</td>
+                  <td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;">${yearTotal}</td>
+                  <td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;">${yearClosed}</td>
+                  <td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;">${yearOpen}</td>
+                  <td style="border: 1px solid #333; padding: 10px 8px;"></td>
+                  <td style="border: 1px solid #333; padding: 10px 8px;"></td>
                 </tr>
               </tbody>
             </table>
 
-            <h3 style="font-size: 14px; margin: 25px 0 10px 0; color: #dc2626; font-weight: 700;">Open status for ${printMonth === 'All' ? printYear + ' All' : printMonth + ' ' + printYear}</h3>
+            <h3 style="font-size: 20px; margin: 25px 0 10px 0; color: #000; font-weight: 700;">Open status for ${printMonth === 'All' ? printYear + ' All' : printMonth + ' ' + printYear}</h3>
             <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
               <thead>
                 <tr>
-                  <th style="background: #fef9c3; padding: 12px 8px; border: 1px solid #ccc; width: 120px;"></th>
-                  ${departments.map(d => '<th style="background: #7c3aed; color: white; padding: 12px 8px; border: 1px solid #ccc;">' + d.name + '</th>').join('')}
-                  <th style="background: #7c3aed; color: white; padding: 12px 8px; border: 1px solid #ccc;">All</th>
+                  <th style="background: #fef9c3; padding: 12px 8px; border: 1px solid #333; width: 120px;"></th>
+                  ${departments.map(d => '<th style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #333;">' + d.name + '</th>').join('')}
+                  <th style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #333;">All</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td style="background: #fef9c3; border: 1px solid #ccc; padding: 10px 8px; font-weight: 600;"># of OFI</td>
-                  ${departments.map(d => '<td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center;">' + getDeptStats(d.name).ofi + '</td>').join('')}
-                  <td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; font-weight: 700;">${allOfi}</td>
+                  <td style="background: #fef9c3; border: 1px solid #333; padding: 10px 8px; font-weight: 600;"># of OFI</td>
+                  ${departments.map(d => '<td style="border: 1px solid #333; padding: 10px 8px; text-align: center;">' + getDeptStats(d.name).ofi + '</td>').join('')}
+                  <td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;">${allOfi}</td>
                 </tr>
                 <tr>
-                  <td style="background: #fef9c3; border: 1px solid #ccc; padding: 10px 8px; font-weight: 600;">Open</td>
-                  ${departments.map(d => '<td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center;">' + getDeptStats(d.name).open + '</td>').join('')}
-                  <td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; font-weight: 700;">${allOpen}</td>
+                  <td style="background: #fef9c3; border: 1px solid #333; padding: 10px 8px; font-weight: 600;">Open</td>
+                  ${departments.map(d => '<td style="border: 1px solid #333; padding: 10px 8px; text-align: center;">' + getDeptStats(d.name).open + '</td>').join('')}
+                  <td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;">${allOpen}</td>
                 </tr>
                 <tr>
-                  <td style="background: #fef9c3; border: 1px solid #ccc; padding: 10px 8px; font-weight: 600;">Closed</td>
-                  ${departments.map(d => '<td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center;">' + getDeptStats(d.name).closed + '</td>').join('')}
-                  <td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; font-weight: 700;">${allClosed}</td>
+                  <td style="background: #fef9c3; border: 1px solid #333; padding: 10px 8px; font-weight: 600;">Closed</td>
+                  ${departments.map(d => '<td style="border: 1px solid #333; padding: 10px 8px; text-align: center;">' + getDeptStats(d.name).closed + '</td>').join('')}
+                  <td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;">${allClosed}</td>
                 </tr>
                 <tr>
-                  <td style="background: #fef9c3; border: 1px solid #ccc; padding: 10px 8px; font-weight: 600;">Close Rate</td>
-                  ${departments.map(d => '<td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; color: #dc2626; font-weight: 600;">' + getDeptStats(d.name).rate + '</td>').join('')}
-                  <td style="border: 1px solid #ccc; padding: 10px 8px; text-align: center; font-weight: 700; color: #dc2626;">${allRate}</td>
+                  <td style="background: #fef9c3; border: 1px solid #333; padding: 10px 8px; font-weight: 600;">Close Rate</td>
+                  ${departments.map(d => '<td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 600;' + getDeptStats(d.name).rateBg + '">' + getDeptStats(d.name).rate + '</td>').join('')}
+                  <td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;${allRateBg}">${allRate}</td>
                 </tr>
               </tbody>
             </table>
             
             <!-- 하단 페이지 번호 -->
             <div style="text-align: right; margin-top: 30px;">
-              <span style="font-size: 12px; color: #6b7280;">1</span>
+              <span style="font-size: 12px; color: #6b7280;">2</span>
             </div>
           </div>
         `;
@@ -967,67 +1147,71 @@
           const findingNum = generateFindingNumber(issue, idx);
           const locationDept = issue.department + ' – ' + (issue.manager || 'N/A');
           
-          // 이미지 크기 가져오기
-          const sizes = imageSizes[issue.id] || { beforeSize: 100, afterSize: 100 };
+          // 이미지 크기 가져오기 (W/H 독립)
+          const sizes = imageSizes[issue.id] || {};
           
-          // 이미지 렌더링 함수 (1장 또는 2장, 개별 크기, 첫 번째가 위로)
+          // 이미지 렌더링 함수 (가로/세로 독립 크기)
           const renderPhotos = (photos, type, sizes) => {
-            const baseSize = 280;
-            
             if (!photos || photos.length === 0) {
               return '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 16px;">No Image</div>';
             } else if (photos.length === 1) {
-              // 1장: 표 셀 영역 안에서 최대 크기 (비율 유지, 가로 480px, 세로 350px 제한)
-              return '<div style="display: flex; align-items: center; justify-content: center; height: 100%;"><img src="' + photos[0] + '" style="max-width: 480px; max-height: 350px; object-fit: contain;" /></div>';
+              const w = sizes[type + '0W'] || 100;
+              const h = sizes[type + '0H'] || 100;
+              const imgW = Math.round(480 * w / 100);
+              const imgH = Math.round(350 * h / 100);
+              return '<div style="display: flex; align-items: center; justify-content: center; height: 100%;"><img src="' + photos[0] + '" style="width: ' + imgW + 'px; height: ' + imgH + 'px; object-fit: fill;" /></div>';
             } else {
-              // 2장: 개별 크기, 첫 번째가 위로 (z-index 높게)
-              const size0 = sizes[type + '0Size'] || 100;
-              const size1 = sizes[type + '1Size'] || 100;
-              const img0Size = Math.round(baseSize * 0.6 * size0 / 100);
-              const img1Size = Math.round(baseSize * 0.6 * size1 / 100);
+              const w0 = sizes[type + '0W'] || 100;
+              const h0 = sizes[type + '0H'] || 100;
+              const w1 = sizes[type + '1W'] || 100;
+              const h1 = sizes[type + '1H'] || 100;
+              const imgW0 = Math.round(240 * w0 / 100);
+              const imgH0 = Math.round(200 * h0 / 100);
+              const imgW1 = Math.round(240 * w1 / 100);
+              const imgH1 = Math.round(200 * h1 / 100);
               return '<div style="position: relative; width: 100%; height: 100%;">' +
-                '<div style="position: absolute; top: 0; left: 0; z-index: 5;"><img src="' + photos[0] + '" style="max-width: ' + img0Size + 'px; max-height: ' + img0Size + 'px; object-fit: contain; box-shadow: 2px 2px 8px rgba(0,0,0,0.3);" /></div>' +
-                '<div style="position: absolute; bottom: 0; right: 0; z-index: 2;"><img src="' + photos[1] + '" style="max-width: ' + img1Size + 'px; max-height: ' + img1Size + 'px; object-fit: contain; box-shadow: 2px 2px 8px rgba(0,0,0,0.3);" /></div>' +
+                '<div style="position: absolute; top: 0; left: 0; z-index: 5;"><img src="' + photos[0] + '" style="width: ' + imgW0 + 'px; height: ' + imgH0 + 'px; object-fit: fill; box-shadow: 2px 2px 8px rgba(0,0,0,0.3);" /></div>' +
+                '<div style="position: absolute; bottom: 0; right: 0; z-index: 2;"><img src="' + photos[1] + '" style="width: ' + imgW1 + 'px; height: ' + imgH1 + 'px; object-fit: fill; box-shadow: 2px 2px 8px rgba(0,0,0,0.3);" /></div>' +
                 '</div>';
             }
           };
           
           return `
             <div id="issue-page-${idx}" style="width: 1100px; padding: 30px 40px; background: white; font-family: Arial, sans-serif; box-sizing: border-box;">
-              <!-- 제목 -->
               <h1 style="color: #1e3a5f; font-size: 32px; font-weight: 800; margin: 0 0 25px 0;">Safety / 5S+</h1>
               
-              <!-- 상단 정보 테이블 -->
-              <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 15px;">
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 15px; table-layout: fixed;">
                 <tr>
-                  <td style="background: white; padding: 12px 18px; width: 15%; font-weight: 700; border: 1px solid #ccc;">Finding#</td>
-                  <td style="background: white; padding: 12px 18px; width: 35%; border: 1px solid #ccc;">${findingNum}</td>
-                  <td style="background: white; padding: 12px 18px; width: 22%; font-weight: 700; border: 1px solid #ccc;">Location/Dept/Response</td>
-                  <td style="background: white; padding: 12px 18px; width: 28%; border: 1px solid #ccc;">${locationDept}</td>
+                  <td style="background: white; padding: 12px 18px; width: 15%; font-weight: 700; border: 1px solid #333;">Finding#</td>
+                  <td style="background: white; padding: 12px 18px; width: 35%; border: 1px solid #333;">${findingNum}</td>
+                  <td style="background: white; padding: 12px 18px; width: 22%; font-weight: 700; border: 1px solid #333;">Location/Dept/Response</td>
+                  <td style="background: white; padding: 12px 18px; width: 28%; border: 1px solid #333;">${locationDept}</td>
                 </tr>
               </table>
               
-              <!-- Before/After 섹션 -->
-              <table style="width: 100%; border-collapse: collapse; overflow: visible;">
+              <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
                 <tr>
-                  <th style="background: #be185d; color: white; padding: 16px; width: 50%; font-size: 18px; font-weight: 600; border: 1px solid #ccc;">Before</th>
-                  <th style="background: #10b981; color: white; padding: 16px; width: 50%; font-size: 18px; font-weight: 600; border: 1px solid #ccc;">After</th>
+                  <th style="background: #ff0000; color: #000; padding: 16px; width: 50%; font-size: 18px; font-weight: 600; border: 1px solid #333;">Before</th>
+                  <th style="background: #00ff00; color: #000; padding: 16px; width: 50%; font-size: 18px; font-weight: 600; border: 1px solid #333;">After</th>
                 </tr>
                 <tr>
-                  <td style="border: 1px solid #ccc; padding: 15px; vertical-align: top; height: 380px; background: white; position: relative; overflow: visible;">
-                    ${renderPhotos(issue.issuePhotos, 'before', sizes)}
+                  <td style="border: 1px solid #333; padding: 0; vertical-align: top; background: white; position: relative;">
+                    <div style="height: 380px; padding: 15px; overflow: hidden; position: relative; box-sizing: border-box;">
+                      ${renderPhotos(issue.issuePhotos, 'before', sizes)}
+                    </div>
                   </td>
-                  <td style="border: 1px solid #ccc; padding: 15px; vertical-align: top; height: 380px; background: white; position: relative; overflow: visible;">
-                    ${renderPhotos(issue.actionPhotos, 'after', sizes)}
+                  <td style="border: 1px solid #333; padding: 0; vertical-align: top; background: white; position: relative;">
+                    <div style="height: 380px; padding: 15px; overflow: hidden; position: relative; box-sizing: border-box;">
+                      ${renderPhotos(issue.actionPhotos, 'after', sizes)}
+                    </div>
                   </td>
                 </tr>
                 <tr>
-                  <td style="border: 1px solid #ccc; padding: 18px 22px; vertical-align: top; height: 120px; font-size: 15px; background: white; line-height: 1.7;">${issue.description || ''}</td>
-                  <td style="border: 1px solid #ccc; padding: 18px 22px; vertical-align: top; height: 120px; font-size: 15px; background: white; line-height: 1.7;">${issue.actionContent || ''}</td>
+                  <td style="border: 1px solid #333; padding: 18px 22px; vertical-align: top; height: 120px; font-size: 15px; background: white; line-height: 1.7;">${issue.description || ''}</td>
+                  <td style="border: 1px solid #333; padding: 18px 22px; vertical-align: top; height: 120px; font-size: 15px; background: white; line-height: 1.7;">${issue.actionContent || ''}</td>
                 </tr>
               </table>
               
-              <!-- 하단 페이지 번호 -->
               <div style="text-align: right; margin-top: 20px;">
                 <span style="font-size: 14px; color: #6b7280;">${pageNum}</span>
               </div>
@@ -1047,7 +1231,48 @@
           const pageWidth = doc.internal.pageSize.getWidth();
           const pageHeight = doc.internal.pageSize.getHeight();
           
+          // 0. 커버 페이지 생성
+          const auditDateFormatted = auditDate ? (() => {
+            const dp = safeParseDate(auditDate);
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return monthNames[dp.month] + ' ' + dp.day + 'th ' + dp.year;
+          })() : '';
+          
+          const coverHTML = `
+            <div id="cover-page" style="width: 1100px; height: 760px; padding: 50px 60px; background: white; font-family: Arial, sans-serif; box-sizing: border-box; position: relative;">
+              <h1 style="color: #1e6bb8; font-size: 42px; font-weight: 700; margin: 0; padding-bottom: 16px; border-bottom: 3px solid #999;">Gemba Walk terms</h1>
+              
+              <div style="margin: 50px 0 0 30px;">
+                <p style="font-size: 42px; font-weight: 700; margin: 0 0 50px 0;">
+                  <span style="color: #1e6bb8; font-size: 42px;">➤</span> Audit Date : ${auditDateFormatted}
+                </p>
+                
+                <div style="font-size: 42px; font-weight: 700; margin: 0;">
+                  <span style="color: #1e6bb8; font-size: 42px;">➤</span> Auditor : ${auditorName} – ${auditorTitle}<br>
+                  <span style="visibility: hidden;"><span style="color: #1e6bb8; font-size: 42px;">➤</span> Auditor : </span>Inhee Park - EHS Analyst
+                </div>
+                
+                <p style="font-size: 42px; font-weight: 700; margin: 50px 0 0 0;">
+                  <span style="color: #1e6bb8; font-size: 42px;">➤</span> Other conditions : Integrated EHS & 5S+
+                </p>
+              </div>
+            </div>
+          `;
+          
+          tempDiv.innerHTML = coverHTML;
+          const coverElement = tempDiv.querySelector('#cover-page');
+          const coverCanvas = await html2canvas(coverElement, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff'
+          });
+          const coverImg = coverCanvas.toDataURL('image/png');
+          const coverImgWidth = pageWidth - 10;
+          const coverImgHeight = (coverCanvas.height * coverImgWidth) / coverCanvas.width;
+          doc.addImage(coverImg, 'PNG', 5, 5, coverImgWidth, Math.min(coverImgHeight, pageHeight - 10));
+          
           // 1. 요약 페이지 생성
+          doc.addPage();
           tempDiv.innerHTML = summaryHTML;
           const summaryElement = tempDiv.querySelector('#pdf-content');
           const summaryCanvas = await html2canvas(summaryElement, {
@@ -1057,16 +1282,16 @@
           });
           
           const summaryImg = summaryCanvas.toDataURL('image/png');
-          const imgWidth = pageWidth - 20;
+          const imgWidth = pageWidth - 10;
           const imgHeight = (summaryCanvas.height * imgWidth) / summaryCanvas.width;
-          doc.addImage(summaryImg, 'PNG', 10, 10, imgWidth, Math.min(imgHeight, pageHeight - 20));
+          doc.addImage(summaryImg, 'PNG', 5, 5, imgWidth, Math.min(imgHeight, pageHeight - 10));
 
           // 2. 각 이슈별 페이지 생성
-          const totalPages = filteredIssues.length + 1;
+          const totalPages = filteredIssues.length + 2;
           for (let i = 0; i < filteredIssues.length; i++) {
             doc.addPage();
             
-            const issueHTML = createIssuePageHTML(filteredIssues[i], i, i + 2, totalPages);
+            const issueHTML = createIssuePageHTML(filteredIssues[i], i, i + 3, totalPages);
             tempDiv.innerHTML = issueHTML;
             const issueElement = tempDiv.querySelector('#issue-page-' + i);
             
@@ -1287,9 +1512,9 @@
                       // Target Date가 없으면 일자 + 30일로 계산
                       const targetDate = issue.targetDate || (() => {
                         if (issue.date) {
-                          const d = new Date(issue.date);
-                          d.setDate(d.getDate() + 30);
-                          return d.toISOString().split('T')[0];
+                          const dp = safeParseDate(issue.date);
+                          const dd = new Date(dp.year, dp.month, dp.day + 30);
+                          return dd.getFullYear() + '-' + String(dd.getMonth()+1).padStart(2,'0') + '-' + String(dd.getDate()).padStart(2,'0');
                         }
                         return '';
                       })();
@@ -1302,11 +1527,15 @@
                           <input type="checkbox" checked={selectedIds.includes(issue.id)} onChange={() => toggleSelect(issue.id)} disabled={!selectedIds.includes(issue.id) && selectedIds.length >= 2} style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#6366f1' }} />
                         </td>
                         <td style={styles.td}><input type="date" style={styles.inlineInput} value={formatDate(issue.date)} onChange={(e) => {
-                          updateIssueField(issue.id, 'date', e.target.value);
-                          // Target Date도 자동 업데이트
-                          const newDate = new Date(e.target.value);
-                          newDate.setDate(newDate.getDate() + 30);
-                          updateIssueField(issue.id, 'targetDate', newDate.toISOString().split('T')[0]);
+                          const newDateStr = e.target.value;
+                          const parts = newDateStr.split('-');
+                          const td = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]) + 30);
+                          const newTarget = td.getFullYear() + '-' + String(td.getMonth()+1).padStart(2,'0') + '-' + String(td.getDate()).padStart(2,'0');
+                          // 두 필드 동시 업데이트
+                          const updatedIssues = issues.map(i => i.id === issue.id ? { ...i, date: newDateStr, targetDate: newTarget } : i);
+                          setIssues(updatedIssues);
+                          const updatedIssue = updatedIssues.find(i => i.id === issue.id);
+                          fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateIssue', issue: updatedIssue }) });
                         }} /></td>
                         <td style={styles.td}>
                           <select style={styles.inlineInput} value={issue.supervisor} onChange={(e) => updateIssueField(issue.id, 'supervisor', e.target.value)}>
@@ -1329,7 +1558,7 @@
                         <td style={styles.td}><textarea style={{...styles.inlineInput, minHeight: 60}} value={issue.description} onChange={(e) => updateIssueField(issue.id, 'description', e.target.value)} /></td>
                         <td style={styles.td}>
                           <div style={styles.photoGrid}>
-                            {issue.issuePhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage(p)} />)}
+                            {issue.issuePhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "issue", index: i})} />)}
                           </div>
                           <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: 'rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
                             📷 추가
@@ -1339,7 +1568,7 @@
                         <td style={styles.td}><textarea style={{...styles.inlineInput, minHeight: 60}} value={issue.actionContent} onChange={(e) => updateIssueField(issue.id, 'actionContent', e.target.value)} /></td>
                         <td style={styles.td}>
                           <div style={styles.photoGrid}>
-                            {issue.actionPhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage(p)} />)}
+                            {issue.actionPhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "action", index: i})} />)}
                           </div>
                           <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: 'rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
                             📷 추가
@@ -1389,9 +1618,9 @@
                 const overdueIssues = issues.filter(issue => {
                   const targetDate = issue.targetDate || (() => {
                     if (issue.date) {
-                      const d = new Date(issue.date);
-                      d.setDate(d.getDate() + 30);
-                      return d.toISOString().split('T')[0];
+                      const dp = safeParseDate(issue.date);
+                      const dd = new Date(dp.year, dp.month, dp.day + 30);
+                      return dd.getFullYear() + '-' + String(dd.getMonth()+1).padStart(2,'0') + '-' + String(dd.getDate()).padStart(2,'0');
                     }
                     return '';
                   })();
@@ -1513,7 +1742,7 @@
                                     <img 
                                       src={issue.issuePhotos[0]} 
                                       style={{ width: 50, height: 50, objectFit: 'cover', borderRadius: 4, cursor: 'pointer' }}
-                                      onClick={() => setViewerImage(issue.issuePhotos[0])}
+                                      onClick={() => setViewerImage({src: issue.issuePhotos[0], issueId: issue.id, type: "issue", index: 0})}
                                       alt=""
                                     />
                                   )}
@@ -1822,9 +2051,9 @@
                       ) : issues.filter(i => i.department === selectedDeptForAction).map(issue => {
                         const targetDate = issue.targetDate || (() => {
                           if (issue.date) {
-                            const d = new Date(issue.date);
-                            d.setDate(d.getDate() + 30);
-                            return d.toISOString().split('T')[0];
+                            const dp = safeParseDate(issue.date);
+                            const dd = new Date(dp.year, dp.month, dp.day + 30);
+                            return dd.getFullYear() + '-' + String(dd.getMonth()+1).padStart(2,'0') + '-' + String(dd.getDate()).padStart(2,'0');
                           }
                           return '';
                         })();
@@ -1852,7 +2081,7 @@
                               <div style={{ marginBottom: 12 }}>
                                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>지적사진</div>
                                 <div style={styles.photoGrid}>
-                                  {issue.issuePhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage(p)} />)}
+                                  {issue.issuePhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "issue", index: i})} />)}
                                 </div>
                               </div>
                             )}
@@ -1876,7 +2105,7 @@
                             <div style={{ marginBottom: 12 }}>
                               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>조치사진</div>
                               <div style={styles.photoGrid}>
-                                {issue.actionPhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage(p)} />)}
+                                {issue.actionPhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "action", index: i})} />)}
                               </div>
                               {issue.status === 'Ongoing' && (
                                 <label style={{ display: 'inline-block', marginTop: 8, padding: '6px 12px', background: 'rgba(255,255,255,0.1)', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>
@@ -1899,7 +2128,7 @@
                                 <button 
                                   style={{...styles.btnPrimary, padding: '8px 16px', fontSize: 12, opacity: canReport ? 1 : 0.5}}
                                   disabled={!canReport}
-                                  onClick={() => submitReport(issue.id)}
+                                  onClick={() => openReportModal(issue.id)}
                                 >
                                   보고
                                 </button>
@@ -1934,9 +2163,9 @@
                           // Target Date 계산
                           const targetDate = issue.targetDate || (() => {
                             if (issue.date) {
-                              const d = new Date(issue.date);
-                              d.setDate(d.getDate() + 30);
-                              return d.toISOString().split('T')[0];
+                              const dp = safeParseDate(issue.date);
+                              const dd = new Date(dp.year, dp.month, dp.day + 30);
+                              return dd.getFullYear() + '-' + String(dd.getMonth()+1).padStart(2,'0') + '-' + String(dd.getDate()).padStart(2,'0');
                             }
                             return '';
                           })();
@@ -1955,7 +2184,7 @@
                             <td style={styles.td}>{issue.description}</td>
                             <td style={styles.td}>
                               <div style={styles.photoGrid}>
-                                {issue.issuePhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage(p)} />)}
+                                {issue.issuePhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "issue", index: i})} />)}
                               </div>
                             </td>
                             <td style={styles.td}>
@@ -1963,7 +2192,7 @@
                             </td>
                             <td style={styles.td}>
                               <div style={styles.photoGrid}>
-                                {issue.actionPhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage(p)} />)}
+                                {issue.actionPhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "action", index: i})} />)}
                               </div>
                               {issue.status === 'Ongoing' && (
                                 <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: 'rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
@@ -2000,7 +2229,7 @@
                                         whiteSpace: 'nowrap'
                                       }} 
                                       disabled={!canReport}
-                                      onClick={() => submitReport(issue.id)}
+                                      onClick={() => openReportModal(issue.id)}
                                     >
                                       보고
                                     </button>
@@ -2046,36 +2275,56 @@
 
               {/* PDF 스타일 보고서 미리보기 */}
               <div style={{ background: 'white', borderRadius: 8, padding: 30, color: '#333' }}>
-                <h1 style={{ color: '#1e3a5f', fontSize: 24, fontWeight: 800, marginBottom: 20 }}>EHS & Lean Gemba Walk Status</h1>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <h1 style={{ color: '#1e3a5f', fontSize: 24, fontWeight: 800, marginBottom: 20 }}>EHS & Lean Gemba Walk Status</h1>
+                  <table style={{ borderCollapse: 'collapse', fontSize: 11 }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ border: '1px solid #333', padding: '4px 8px', textAlign: 'center' }}><span style={{ display: 'inline-block', width: 16, height: 16, borderRadius: '50%', background: '#00ff00' }}></span></td>
+                        <td style={{ border: '1px solid #333', padding: '4px 8px' }}>Completed</td>
+                      </tr>
+                      <tr>
+                        <td style={{ border: '1px solid #333', padding: '4px 8px', textAlign: 'center' }}><span style={{ display: 'inline-block', width: 16, height: 16, borderRadius: '50%', background: '#ffff00' }}></span></td>
+                        <td style={{ border: '1px solid #333', padding: '4px 8px' }}>Delay(within90)</td>
+                      </tr>
+                      <tr>
+                        <td style={{ border: '1px solid #333', padding: '4px 8px', textAlign: 'center' }}><span style={{ display: 'inline-block', width: 16, height: 16, borderRadius: '50%', background: '#ff0000' }}></span></td>
+                        <td style={{ border: '1px solid #333', padding: '4px 8px' }}>Delay(Overdue91)</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
                 
                 {/* EHS Gemba Audit status 테이블 */}
-                <h3 style={{ fontSize: 12, margin: '16px 0 8px 0', fontWeight: 600 }}>EHS Gemba Audit status</h3>
+                <h3 style={{ fontSize: 18, margin: '16px 0 8px 0', fontWeight: 700 }}>EHS Gemba Audit status</h3>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, marginBottom: 24 }}>
                   <thead>
                     <tr>
-                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #ccc', width: 50 }}>Month</th>
-                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #ccc', width: 70 }}>Finding Total</th>
-                      <th colSpan={2} style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #ccc' }}>Corrective Action</th>
-                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #ccc', width: 70 }}>Close Ratio</th>
-                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #ccc' }}>Detail (Open issues)</th>
+                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333', width: 50 }}>Month</th>
+                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333', width: 70 }}>Finding Total</th>
+                      <th colSpan={2} style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #333' }}>Corrective Action</th>
+                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333', width: 70 }}>Close Ratio</th>
+                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333' }}>Detail (Open issues)</th>
                     </tr>
                     <tr>
-                      <th style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #ccc', width: 55 }}>Close #</th>
-                      <th style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #ccc', width: 55 }}>Open #</th>
+                      <th style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #333', width: 55 }}>Close #</th>
+                      <th style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #333', width: 55 }}>Open #</th>
                     </tr>
                   </thead>
                   <tbody>
                     {months.map((month, idx) => {
                       const stats = getMonthStats(idx);
                       const detailKey = `${reportYear}-${month}`;
+                      const ratioBg = stats.ratioColor || 'transparent';
+                      const ratioFontColor = stats.ratioColor === '#ff0000' ? 'white' : '#333';
                       return (
                         <tr key={month}>
-                          <td style={{ border: '1px solid #ccc', padding: '6px 8px', fontWeight: 500 }}>{month}</td>
-                          <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center' }}>{stats.total || ''}</td>
-                          <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center' }}>{stats.closed || ''}</td>
-                          <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center' }}>{stats.open || ''}</td>
-                          <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center' }}>{stats.total > 0 ? `${stats.closeRate}%` : ''}</td>
-                          <td style={{ border: '1px solid #ccc', padding: '4px 8px' }}>
+                          <td style={{ border: '1px solid #333', padding: '6px 8px', fontWeight: 500, textAlign: 'center' }}>{month}</td>
+                          <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center' }}>{stats.total || ''}</td>
+                          <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center' }}>{stats.closed || ''}</td>
+                          <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center' }}>{stats.open || ''}</td>
+                          <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700, background: ratioBg, color: ratioFontColor }}>{stats.total > 0 ? `${stats.closeRate}%` : ''}</td>
+                          <td style={{ border: '1px solid #333', padding: '4px 8px' }}>
                             {isAdminMode ? (
                               <input 
                                 type="text" 
@@ -2102,28 +2351,28 @@
                       );
                     })}
                     <tr style={{ background: '#fef9c3' }}>
-                      <td style={{ border: '1px solid #ccc', padding: '6px 8px', fontWeight: 700 }}>Total</td>
-                      <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{getYearlyTotal().total}</td>
-                      <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{getYearlyTotal().closed}</td>
-                      <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{getYearlyTotal().open}</td>
-                      <td style={{ border: '1px solid #ccc', padding: '6px 8px' }}></td>
-                      <td style={{ border: '1px solid #ccc', padding: '6px 8px' }}></td>
+                      <td style={{ border: '1px solid #333', padding: '6px 8px', fontWeight: 700, textAlign: 'center' }}>Total</td>
+                      <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{getYearlyTotal().total}</td>
+                      <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{getYearlyTotal().closed}</td>
+                      <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{getYearlyTotal().open}</td>
+                      <td style={{ border: '1px solid #333', padding: '6px 8px' }}></td>
+                      <td style={{ border: '1px solid #333', padding: '6px 8px' }}></td>
                     </tr>
                   </tbody>
                 </table>
 
                 {/* Open status 테이블 */}
-                <h3 style={{ fontSize: 12, margin: '20px 0 8px 0', fontWeight: 700, color: '#dc2626' }}>
+                <h3 style={{ fontSize: 18, margin: '20px 0 8px 0', fontWeight: 700, color: '#000' }}>
                   Open status for {reportMonth === 'All' ? `${reportYear} All` : `${reportMonth} ${reportYear}`}
                 </h3>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                   <thead>
                     <tr>
-                      <th style={{ background: '#fef9c3', padding: '8px 6px', border: '1px solid #ccc', width: 80 }}></th>
+                      <th style={{ background: '#fef9c3', padding: '8px 6px', border: '1px solid #333', width: 80 }}></th>
                       {departments.map(dept => (
-                        <th key={dept.name} style={{ background: '#7c3aed', color: 'white', padding: '8px 6px', border: '1px solid #ccc', fontSize: 10 }}>{dept.name}</th>
+                        <th key={dept.name} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333', fontSize: 10 }}>{dept.name}</th>
                       ))}
-                      <th style={{ background: '#7c3aed', color: 'white', padding: '8px 6px', border: '1px solid #ccc' }}>All</th>
+                      <th style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333' }}>All</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2131,49 +2380,51 @@
                       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                       const monthIndex = monthNames.indexOf(reportMonth);
                       const filteredIssues = issues.filter(i => {
-                        const d = new Date(i.date);
-                        if (reportMonth === 'All') return d.getFullYear() === reportYear;
-                        return d.getFullYear() === reportYear && d.getMonth() === monthIndex;
+                        const d = safeParseDate(i.date);
+                        if (reportMonth === 'All') return d.year === reportYear;
+                        return d.year === reportYear && d.month === monthIndex;
                       });
                       return (
                         <>
                           <tr>
-                            <td style={{ background: '#fef9c3', border: '1px solid #ccc', padding: '6px 8px', fontWeight: 600 }}># of OFI</td>
+                            <td style={{ background: '#fef9c3', border: '1px solid #333', padding: '6px 8px', fontWeight: 600 }}># of OFI</td>
                             {departments.map(dept => {
                               const count = filteredIssues.filter(i => i.department === dept.name).length;
-                              return <td key={dept.name} style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center' }}>{count}</td>;
+                              return <td key={dept.name} style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center' }}>{count}</td>;
                             })}
-                            <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{filteredIssues.length}</td>
+                            <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{filteredIssues.length}</td>
                           </tr>
                           <tr>
-                            <td style={{ background: '#fef9c3', border: '1px solid #ccc', padding: '6px 8px', fontWeight: 600 }}>Open</td>
+                            <td style={{ background: '#fef9c3', border: '1px solid #333', padding: '6px 8px', fontWeight: 600 }}>Open</td>
                             {departments.map(dept => {
                               const count = filteredIssues.filter(i => i.department === dept.name && i.status !== 'Complete').length;
-                              return <td key={dept.name} style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center' }}>{count}</td>;
+                              return <td key={dept.name} style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center' }}>{count}</td>;
                             })}
-                            <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{filteredIssues.filter(i => i.status !== 'Complete').length}</td>
+                            <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{filteredIssues.filter(i => i.status !== 'Complete').length}</td>
                           </tr>
                           <tr>
-                            <td style={{ background: '#fef9c3', border: '1px solid #ccc', padding: '6px 8px', fontWeight: 600 }}>Closed</td>
+                            <td style={{ background: '#fef9c3', border: '1px solid #333', padding: '6px 8px', fontWeight: 600 }}>Closed</td>
                             {departments.map(dept => {
                               const count = filteredIssues.filter(i => i.department === dept.name && i.status === 'Complete').length;
-                              return <td key={dept.name} style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center' }}>{count}</td>;
+                              return <td key={dept.name} style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center' }}>{count}</td>;
                             })}
-                            <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{filteredIssues.filter(i => i.status === 'Complete').length}</td>
+                            <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{filteredIssues.filter(i => i.status === 'Complete').length}</td>
                           </tr>
                           <tr>
-                            <td style={{ background: '#fef9c3', border: '1px solid #ccc', padding: '6px 8px', fontWeight: 600 }}>Close Rate</td>
+                            <td style={{ background: '#fef9c3', border: '1px solid #333', padding: '6px 8px', fontWeight: 600 }}>Close Rate</td>
                             {departments.map(dept => {
                               const total = filteredIssues.filter(i => i.department === dept.name).length;
                               const closed = filteredIssues.filter(i => i.department === dept.name && i.status === 'Complete').length;
                               const rate = total > 0 ? Math.round(closed / total * 100) : 0;
-                              return <td key={dept.name} style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', color: '#dc2626', fontWeight: 600 }}>{rate}%</td>;
+                              const bg = total === 0 ? 'transparent' : rate === 100 ? '#00ff00' : '#ffff00';
+                              return <td key={dept.name} style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 600, background: bg }}>{rate}%</td>;
                             })}
                             {(() => {
                               const total = filteredIssues.length;
                               const closed = filteredIssues.filter(i => i.status === 'Complete').length;
                               const rate = total > 0 ? Math.round(closed / total * 100) : 0;
-                              return <td style={{ border: '1px solid #ccc', padding: '6px 8px', textAlign: 'center', color: '#dc2626', fontWeight: 700 }}>{rate}%</td>;
+                              const bg = total === 0 ? 'transparent' : rate === 100 ? '#00ff00' : '#ffff00';
+                              return <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700, background: bg }}>{rate}%</td>;
                             })()}
                           </tr>
                         </>
@@ -2444,6 +2695,103 @@
             </div>
           )}
 
+          {/* 보고 수신자 선택 모달 */}
+          {reportModalIssueId && (() => {
+            const issue = issues.find(i => i.id === reportModalIssueId);
+            if (!issue) return null;
+            const deptManagers = managers[issue.department] || [];
+            const allRecipients = [...deptManagers];
+            // 다른 부서 매니저 중 이메일 있는 사람도 추가 옵션
+            
+            return (
+              <div style={styles.modalOverlay} onClick={() => setReportModalIssueId(null)}>
+                <div style={{...styles.modalContent, maxWidth: 550, maxHeight: '85vh', overflow: 'auto'}} onClick={e => e.stopPropagation()}>
+                  <h2 style={{ margin: '0 0 8px 0', fontSize: 20, fontWeight: 600, color: '#a5b4fc' }}>📧 조치완료 보고 메일</h2>
+                  <p style={{ margin: '0 0 20px 0', fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>
+                    [{issue.department}] {issue.description ? issue.description.substring(0, 50) : ''}...
+                  </p>
+
+                  {/* 수신자 선택 */}
+                  <div style={{ marginBottom: 20 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#f0abfc', marginBottom: 10 }}>📬 수신자 (To) — 선택해주세요</div>
+                    <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 12 }}>
+                      {deptManagers.length === 0 ? (
+                        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>해당 부서에 등록된 담당자가 없습니다.</span>
+                      ) : (
+                        deptManagers.filter(m => m.email).map(m => (
+                          <label key={m.email} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', cursor: 'pointer', fontSize: 13, color: 'rgba(255,255,255,0.9)' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={reportRecipients.includes(m.email)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setReportRecipients([...reportRecipients, m.email]);
+                                } else {
+                                  setReportRecipients(reportRecipients.filter(r => r !== m.email));
+                                }
+                              }}
+                              style={{ width: 16, height: 16 }}
+                            />
+                            <span style={{ fontWeight: 600 }}>{m.name}</span>
+                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>({m.email})</span>
+                          </label>
+                        ))
+                      )}
+                      {deptManagers.filter(m => m.email).length === 0 && deptManagers.length > 0 && (
+                        <span style={{ fontSize: 12, color: '#fbbf24' }}>⚠️ 이메일이 등록된 담당자가 없습니다. 설정에서 이메일을 추가해주세요.</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* CC - 관리자 강제 */}
+                  <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#fbbf24', marginBottom: 10 }}>📋 참조 (CC) — 관리자 자동포함</div>
+                    <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 12 }}>
+                      {admins.filter(a => a.email).length === 0 ? (
+                        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>등록된 관리자가 없습니다.</span>
+                      ) : (
+                        admins.filter(a => a.email).map(a => (
+                          <label key={a.email} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', fontSize: 13, color: 'rgba(255,255,255,0.9)' }}>
+                            <input type="checkbox" checked={true} disabled style={{ width: 16, height: 16, opacity: 0.6 }} />
+                            <span style={{ fontWeight: 600 }}>👑 {a.name}</span>
+                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>({a.email})</span>
+                            <span style={{ fontSize: 10, color: '#fbbf24', marginLeft: 4 }}>해제불가</span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 버튼 */}
+                  <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                    <button 
+                      style={styles.btnSecondary} 
+                      onClick={() => setReportModalIssueId(null)}
+                      disabled={sendingReport}
+                    >
+                      취소
+                    </button>
+                    <button 
+                      style={{
+                        ...styles.btnPrimary, 
+                        padding: '10px 24px', 
+                        fontSize: 14,
+                        background: reportRecipients.length > 0 
+                          ? 'linear-gradient(135deg, #10b981, #059669)' 
+                          : 'rgba(255,255,255,0.1)',
+                        opacity: reportRecipients.length > 0 ? 1 : 0.5
+                      }}
+                      disabled={reportRecipients.length === 0 || sendingReport}
+                      onClick={submitReportWithEmail}
+                    >
+                      {sendingReport ? '📧 발송 중...' : `📧 메일발송 & 보고완료 (${reportRecipients.length}명)`}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* 관리자 비밀번호 모달 */}
           {showAdminModal && (
             <div style={styles.modalOverlay} onClick={() => { setShowAdminModal(false); setAdminPassword(''); }}>
@@ -2585,6 +2933,38 @@
                     ))}
                   </select>
                 </div>
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 20, marginBottom: 20 }}>
+                  <h3 style={{ margin: '0 0 16px 0', fontSize: 15, fontWeight: 600, color: '#93c5fd' }}>📄 표지 설정</h3>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>Audit Date</label>
+                    <input 
+                      type="date" 
+                      value={auditDate} 
+                      onChange={(e) => setAuditDate(e.target.value)}
+                      style={{ ...styles.settingsInput, width: '100%', padding: '12px 16px', fontSize: 14 }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>Auditor 이름</label>
+                    <input 
+                      type="text" 
+                      value={auditorName} 
+                      onChange={(e) => setAuditorName(e.target.value)}
+                      placeholder="James Hwang"
+                      style={{ ...styles.settingsInput, width: '100%', padding: '12px 16px', fontSize: 14 }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>Auditor 직책</label>
+                    <input 
+                      type="text" 
+                      value={auditorTitle} 
+                      onChange={(e) => setAuditorTitle(e.target.value)}
+                      placeholder="Plant Manager"
+                      style={{ ...styles.settingsInput, width: '100%', padding: '12px 16px', fontSize: 14 }}
+                    />
+                  </div>
+                </div>
                 <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
                   <button style={styles.btnSecondary} onClick={() => setShowPrintModal(false)}>취소</button>
                   <button style={{...styles.btnPrimary, background: 'linear-gradient(135deg, #10b981, #059669)'}} onClick={openPreview}>미리보기</button>
@@ -2606,10 +2986,10 @@
               <div style={{ position: 'sticky', top: 0, background: 'linear-gradient(135deg, #1e1e2f, #2d2d44)', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', zIndex: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'white' }}>📋 PDF 미리보기</h2>
-                  <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>{printYear}년 {printMonth} | 총 {previewIssues.length + 1} 페이지</span>
+                  <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>{printYear}년 {printMonth} | 총 {previewIssues.length + 2} 페이지</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 12, color: '#fbbf24', background: 'rgba(251,191,36,0.2)', padding: '4px 12px', borderRadius: 4 }}>💡 이미지 모서리를 드래그해서 크기 조절</span>
+                  <span style={{ fontSize: 12, color: '#fbbf24', background: 'rgba(251,191,36,0.2)', padding: '4px 12px', borderRadius: 4 }}>💡 ↔가로 ↕세로 ↘동시 핸들로 이미지 크기 조절</span>
                   <button style={styles.btnSecondary} onClick={() => { setShowPreview(false); setPreviewIssues([]); }}>닫기</button>
                   <button style={styles.btnPrimary} onClick={() => { setShowPreview(false); downloadReport(); }}>PDF 다운로드</button>
                 </div>
@@ -2618,99 +2998,210 @@
               {/* 스크롤 가능한 페이지 목록 */}
               <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 32 }}>
                 
-                {/* 요약 페이지 */}
-                <div style={{ background: 'white', width: 950, padding: 30, borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
-                  <div style={{ textAlign: 'center', marginBottom: 16, color: '#6b7280', fontSize: 12, fontWeight: 600 }}>페이지 1 / {previewIssues.length + 1}</div>
-                  <h1 style={{ color: '#1e3a5f', fontSize: 28, fontWeight: 800, marginBottom: 16 }}>EHS & Lean Gemba Walk Status</h1>
-                  <div style={{ padding: 16, background: '#f8f9fa', borderRadius: 8, fontSize: 14, color: '#333' }}>
-                    <p style={{ margin: 0 }}>• 기간: {printYear}년 {printMonth}</p>
-                    <p style={{ margin: '6px 0 0 0' }}>• 총 이슈: {previewIssues.length}건</p>
-                    <p style={{ margin: '6px 0 0 0' }}>• 완료: {previewIssues.filter(i => i.status === 'Complete').length}건</p>
-                    <p style={{ margin: '6px 0 0 0' }}>• 진행중: {previewIssues.filter(i => i.status !== 'Complete').length}건</p>
+                {/* 페이지 1: 커버 페이지 */}
+                <div style={{ background: 'white', width: 1100, borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.4)', overflow: 'hidden' }}>
+                  <div style={{ textAlign: 'center', padding: 10, background: '#f0f0f0', color: '#6b7280', fontSize: 12, fontWeight: 600 }}>페이지 1 / {previewIssues.length + 2}</div>
+                  <div style={{ width: 1100, height: 760, padding: '50px 60px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box', color: '#000' }}>
+                    <h1 style={{ color: '#1e6bb8', fontSize: 42, fontWeight: 700, margin: 0, paddingBottom: 16, borderBottom: '3px solid #999' }}>Gemba Walk terms</h1>
+                    <div style={{ margin: '50px 0 0 30px' }}>
+                      <p style={{ fontSize: 42, fontWeight: 700, margin: '0 0 50px 0' }}>
+                        <span style={{ color: '#1e6bb8', fontSize: 42 }}>➤</span> Audit Date : {auditDate ? (() => { const dp = safeParseDate(auditDate); const mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return mn[dp.month] + ' ' + dp.day + 'th ' + dp.year; })() : ''}
+                      </p>
+                      <div style={{ fontSize: 42, fontWeight: 700, margin: 0 }}>
+                        <span style={{ color: '#1e6bb8', fontSize: 42 }}>➤</span> Auditor : {auditorName} – {auditorTitle}<br/>
+                        <span style={{ visibility: 'hidden' }}><span style={{ color: '#1e6bb8', fontSize: 42 }}>➤</span> Auditor : </span>Inhee Park - EHS Analyst
+                      </div>
+                      <p style={{ fontSize: 42, fontWeight: 700, margin: '50px 0 0 0' }}>
+                        <span style={{ color: '#1e6bb8', fontSize: 42 }}>➤</span> Other conditions : Integrated EHS & 5S+
+                      </p>
+                    </div>
                   </div>
+                </div>
+
+                {/* 페이지 2: 요약 페이지 */}
+                <div style={{ background: 'white', width: 1100, borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.4)', overflow: 'hidden' }}>
+                  <div style={{ textAlign: 'center', padding: 10, background: '#f0f0f0', color: '#6b7280', fontSize: 12, fontWeight: 600 }}>페이지 2 / {previewIssues.length + 2}</div>
+                  {(() => {
+                    const currentYear = printYear;
+                    const getMonthStatsPreview = (monthIndex) => {
+                      const monthIssues = issues.filter(i => { const d = safeParseDate(i.date); return d.year === currentYear && d.month === monthIndex; });
+                      const total = monthIssues.length;
+                      const closed = monthIssues.filter(i => i.status === 'Complete').length;
+                      const open = total - closed;
+                      const ratio = total > 0 ? Math.round((closed / total) * 100) + '%' : '';
+                      let ratioColor = '';
+                      if (total > 0) {
+                        if (open === 0) { ratioColor = '#00ff00'; }
+                        else {
+                          const today = new Date(); let maxOverdue = 0;
+                          monthIssues.filter(i => i.status !== 'Complete').forEach(issue => {
+                            const dp = safeParseDate(issue.date);
+                            const td = issue.targetDate || (() => { const dd = new Date(dp.year, dp.month, dp.day + 30); return dd.getFullYear() + '-' + String(dd.getMonth()+1).padStart(2,'0') + '-' + String(dd.getDate()).padStart(2,'0'); })();
+                            if (td && new Date(td) < today) { const days = Math.floor((today - new Date(td)) / (1000*60*60*24)); if (days > maxOverdue) maxOverdue = days; }
+                          });
+                          if (maxOverdue > 90) ratioColor = '#ff0000';
+                          else if (maxOverdue > 0) ratioColor = '#ffff00';
+                        }
+                      }
+                      return { total, closed, open, ratio, ratioColor };
+                    };
+                    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov'];
+                    const yearIssues = issues.filter(i => safeParseDate(i.date).year === currentYear);
+                    const yearTotal = yearIssues.length;
+                    const yearClosed = yearIssues.filter(i => i.status === 'Complete').length;
+                    const yearOpen = yearTotal - yearClosed;
+                    
+                    const monthNamesAll = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                    const mIdx = monthNamesAll.indexOf(printMonth);
+                    const filteredForDept = issues.filter(i => { const d = safeParseDate(i.date); if (printMonth === 'All') return d.year === printYear; return d.year === printYear && d.month === mIdx; });
+                    const allOfi = filteredForDept.length;
+                    const allClosed2 = filteredForDept.filter(i => i.status === 'Complete').length;
+                    const allOpen2 = allOfi - allClosed2;
+                    const allRate = allOfi > 0 ? Math.round((allClosed2 / allOfi) * 100) + '%' : '0%';
+                    const allRateBg = allOfi === 0 ? '' : (allClosed2 === allOfi ? '#00ff00' : '#ffff00');
+                    
+                    return (
+                      <div style={{ padding: '30px 40px', fontFamily: 'Arial, sans-serif', color: '#000' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <h1 style={{ color: '#1e3a5f', fontSize: 32, fontWeight: 800, marginBottom: 25 }}>EHS & Lean Gemba Walk Status</h1>
+                          <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
+                            <tbody>
+                              <tr><td style={{ border: '1px solid #333', padding: '6px 10px', textAlign: 'center' }}><span style={{ display: 'inline-block', width: 20, height: 20, borderRadius: '50%', background: '#00ff00' }}></span></td><td style={{ border: '1px solid #333', padding: '6px 10px' }}>Completed</td></tr>
+                              <tr><td style={{ border: '1px solid #333', padding: '6px 10px', textAlign: 'center' }}><span style={{ display: 'inline-block', width: 20, height: 20, borderRadius: '50%', background: '#ffff00' }}></span></td><td style={{ border: '1px solid #333', padding: '6px 10px' }}>Delay(within90)</td></tr>
+                              <tr><td style={{ border: '1px solid #333', padding: '6px 10px', textAlign: 'center' }}><span style={{ display: 'inline-block', width: 20, height: 20, borderRadius: '50%', background: '#ff0000' }}></span></td><td style={{ border: '1px solid #333', padding: '6px 10px' }}>Delay(Overdue91)</td></tr>
+                            </tbody>
+                          </table>
+                        </div>
+                        <h3 style={{ fontSize: 20, margin: '20px 0 10px 0', fontWeight: 700 }}>EHS Gemba Audit status</h3>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                          <thead>
+                            <tr>
+                              <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '12px 8px', border: '1px solid #333', width: 70 }}>Month</th>
+                              <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '12px 8px', border: '1px solid #333', width: 100 }}>Finding Total</th>
+                              <th colSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px', border: '1px solid #333' }}>Corrective Action</th>
+                              <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '12px 8px', border: '1px solid #333', width: 100 }}>Close Ratio</th>
+                              <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '12px 8px', border: '1px solid #333' }}>Detail (Open issues)</th>
+                            </tr>
+                            <tr>
+                              <th style={{ background: '#be185d', color: 'white', padding: '8px', border: '1px solid #333', width: 80 }}>Close #</th>
+                              <th style={{ background: '#be185d', color: 'white', padding: '8px', border: '1px solid #333', width: 80 }}>Open #</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {monthNames.map((m, i) => {
+                              const stats = getMonthStatsPreview(i);
+                              return (
+                                <tr key={m}>
+                                  <td style={{ border: '1px solid #333', padding: '10px 8px', fontWeight: 600, textAlign: 'center' }}>{m}</td>
+                                  <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center' }}>{stats.total || ''}</td>
+                                  <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center' }}>{stats.closed || ''}</td>
+                                  <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center' }}>{stats.open || ''}</td>
+                                  <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center', background: stats.ratioColor || 'transparent', color: stats.ratioColor === '#ff0000' ? 'white' : '#000' }}>{stats.ratio}</td>
+                                  <td style={{ border: '1px solid #333', padding: '10px 8px', fontSize: 12 }}></td>
+                                </tr>
+                              );
+                            })}
+                            <tr style={{ background: '#fef9c3' }}>
+                              <td style={{ border: '1px solid #333', padding: '10px 8px', fontWeight: 700, color: '#dc2626', textAlign: 'center' }}>Total</td>
+                              <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center', fontWeight: 700 }}>{yearTotal || ''}</td>
+                              <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center', fontWeight: 700 }}>{yearClosed || ''}</td>
+                              <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center', fontWeight: 700 }}>{yearOpen || ''}</td>
+                              <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center' }}></td>
+                              <td style={{ border: '1px solid #333', padding: '10px 8px' }}></td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        
+                        <h3 style={{ fontSize: 20, margin: '25px 0 10px 0', fontWeight: 700, color: '#000' }}>Open status for {printMonth === 'All' ? printYear + ' All' : printMonth + ' ' + printYear}</h3>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                          <thead>
+                            <tr>
+                              <th style={{ background: '#fef9c3', padding: '12px 8px', border: '1px solid #333', width: 80 }}></th>
+                              {departments.map(d => <th key={d.name} style={{ background: '#be185d', color: 'white', padding: '12px 8px', border: '1px solid #333' }}>{d.name}</th>)}
+                              <th style={{ background: '#be185d', color: 'white', padding: '12px 8px', border: '1px solid #333' }}>All</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {['# of OFI', 'Open', 'Closed', 'Close Rate'].map(label => {
+                              return (
+                                <tr key={label}>
+                                  <td style={{ background: '#fef9c3', border: '1px solid #333', padding: '10px 8px', fontWeight: 600 }}>{label}</td>
+                                  {departments.map(dept => {
+                                    const deptIssues = filteredForDept.filter(i => i.department === dept.name);
+                                    const total = deptIssues.length;
+                                    const closed = deptIssues.filter(i => i.status === 'Complete').length;
+                                    const open = total - closed;
+                                    const rate = total > 0 ? Math.round((closed/total)*100) + '%' : '0%';
+                                    const rateBg = label === 'Close Rate' ? (total === 0 ? '' : (closed === total ? '#00ff00' : '#ffff00')) : '';
+                                    const val = label === '# of OFI' ? total : label === 'Open' ? open : label === 'Closed' ? closed : rate;
+                                    return <td key={dept.name} style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center', background: rateBg }}>{val}</td>;
+                                  })}
+                                  {(() => {
+                                    const val = label === '# of OFI' ? allOfi : label === 'Open' ? allOpen2 : label === 'Closed' ? allClosed2 : allRate;
+                                    const bg = label === 'Close Rate' ? allRateBg : '';
+                                    return <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center', fontWeight: 700, background: bg }}>{val}</td>;
+                                  })()}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        <div style={{ textAlign: 'right', marginTop: 30 }}><span style={{ fontSize: 12, color: '#6b7280' }}>2</span></div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* 각 이슈 페이지 */}
                 {previewIssues.map((issue, idx) => {
-                  const sizes = imageSizes[issue.id] || { beforeSize: 100, afterSize: 100 };
-                  const d = new Date(issue.date);
-                  const findingNum = String(d.getFullYear()).slice(-2) + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(idx + 1).padStart(2, '0');
+                  const sizes = imageSizes[issue.id] || {};
+                  const d = safeParseDate(issue.date);
+                  const findingNum = String(d.year).slice(-2) + String(d.month + 1).padStart(2, '0') + '-' + String(idx + 1).padStart(2, '0');
                   
-                  // 이미지 렌더링 함수 (드래그 핸들 포함, 겹침 허용, 개별 크기)
                   const renderResizableImage = (photos, type, sizes) => {
                     if (!photos || photos.length === 0) {
-                      return <span style={{ color: '#9ca3af', fontSize: 14 }}>No Image</span>;
+                      return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#9ca3af', fontSize: 16 }}>No Image</div>;
                     }
                     
-                    const baseSize = 280;
-                    
-                    if (photos.length === 1) {
-                      const sizePercent = sizes[type + '0Size'] || 100;
-                      const imgSize = baseSize * sizePercent / 100;
+                    const renderOnePhoto = (photo, photoIdx, maxW, maxH) => {
+                      const w = sizes[type + photoIdx + 'W'] || 100;
+                      const h = sizes[type + photoIdx + 'H'] || 100;
+                      const imgW = Math.round(maxW * w / 100);
+                      const imgH = Math.round(maxH * h / 100);
                       return (
                         <div style={{ position: 'relative', display: 'inline-block' }}>
-                          <img src={photos[0]} style={{ maxWidth: imgSize, maxHeight: imgSize, objectFit: 'contain', display: 'block' }} />
-                          <div 
-                            onMouseDown={(e) => handleResizeStart(e, issue.id, type, 0)}
-                            style={{ 
-                              position: 'absolute', bottom: -4, right: -4, width: 16, height: 16, 
-                              background: type === 'before' ? '#be185d' : '#10b981', 
-                              borderRadius: 3, cursor: 'nwse-resize',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              boxShadow: '0 2px 4px rgba(0,0,0,0.3)', zIndex: 10
-                            }}
-                          >
-                            <span style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>↘</span>
+                          <img src={photo} style={{ width: imgW, height: imgH, objectFit: 'fill', display: 'block' }} />
+                          <div onMouseDown={(e) => handleResizeStart(e, issue.id, type, photoIdx, 'w')}
+                            style={{ position: 'absolute', top: '50%', right: -6, marginTop: -10, width: 12, height: 20, background: '#3b82f6', borderRadius: 3, cursor: 'ew-resize', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <span style={{ color: 'white', fontSize: 8, fontWeight: 'bold' }}>↔</span>
                           </div>
-                          <div style={{ position: 'absolute', top: 4, left: 4, background: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 6px', borderRadius: 3, fontSize: 10, zIndex: 10 }}>
-                            {sizePercent}%
+                          <div onMouseDown={(e) => handleResizeStart(e, issue.id, type, photoIdx, 'h')}
+                            style={{ position: 'absolute', bottom: -6, left: '50%', marginLeft: -10, width: 20, height: 12, background: '#3b82f6', borderRadius: 3, cursor: 'ns-resize', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <span style={{ color: 'white', fontSize: 8, fontWeight: 'bold' }}>↕</span>
                           </div>
+                          <div onMouseDown={(e) => handleResizeStart(e, issue.id, type, photoIdx, 'both')}
+                            style={{ position: 'absolute', bottom: -5, right: -5, width: 14, height: 14, background: '#f59e0b', borderRadius: 3, cursor: 'nwse-resize', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <span style={{ color: 'white', fontSize: 8, fontWeight: 'bold' }}>↘</span>
+                          </div>
+                          <div style={{ position: 'absolute', top: 4, left: 4, background: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 6px', borderRadius: 3, fontSize: 9, zIndex: 10 }}>W:{w}% H:{h}%</div>
+                        </div>
+                      );
+                    };
+                    
+                    if (photos.length === 1) {
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                          {renderOnePhoto(photos[0], 0, 480, 350)}
                         </div>
                       );
                     } else {
-                      // 2장: 개별 크기 조절, 첫 번째가 위로
-                      const size0 = sizes[type + '0Size'] || 100;
-                      const size1 = sizes[type + '1Size'] || 100;
-                      const img0Size = baseSize * 0.6 * size0 / 100;
-                      const img1Size = baseSize * 0.6 * size1 / 100;
-                      
                       return (
                         <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-                          {/* 첫 번째 이미지: 왼쪽 위 기준, z-index 높게 (위로) */}
                           <div style={{ position: 'absolute', top: 0, left: 0, zIndex: 5 }}>
-                            <img src={photos[0]} style={{ maxWidth: img0Size, maxHeight: img0Size, objectFit: 'contain', boxShadow: '2px 2px 8px rgba(0,0,0,0.3)' }} />
-                            <div 
-                              onMouseDown={(e) => handleResizeStart(e, issue.id, type, 0)}
-                              style={{ 
-                                position: 'absolute', bottom: -4, right: -4, width: 16, height: 16, 
-                                background: type === 'before' ? '#be185d' : '#10b981', 
-                                borderRadius: 3, cursor: 'nwse-resize',
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.3)', zIndex: 20
-                              }}
-                            >
-                              <span style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>↘</span>
-                            </div>
-                            <div style={{ position: 'absolute', top: 4, left: 4, background: 'rgba(0,0,0,0.7)', color: 'white', padding: '2px 6px', borderRadius: 3, fontSize: 9, zIndex: 20 }}>
-                              ① {size0}%
-                            </div>
+                            {renderOnePhoto(photos[0], 0, 240, 200)}
                           </div>
-                          {/* 두 번째 이미지: 오른쪽 아래 기준, z-index 낮게 (아래로) */}
                           <div style={{ position: 'absolute', bottom: 0, right: 0, zIndex: 2 }}>
-                            <img src={photos[1]} style={{ maxWidth: img1Size, maxHeight: img1Size, objectFit: 'contain', boxShadow: '2px 2px 8px rgba(0,0,0,0.3)' }} />
-                            <div 
-                              onMouseDown={(e) => handleResizeStart(e, issue.id, type, 1)}
-                              style={{ 
-                                position: 'absolute', bottom: -4, right: -4, width: 16, height: 16, 
-                                background: type === 'before' ? '#f472b6' : '#6ee7b7', 
-                                borderRadius: 3, cursor: 'nwse-resize',
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.3)', zIndex: 20
-                              }}
-                            >
-                              <span style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>↘</span>
-                            </div>
-                            <div style={{ position: 'absolute', top: 4, left: 4, background: 'rgba(0,0,0,0.7)', color: 'white', padding: '2px 6px', borderRadius: 3, fontSize: 9, zIndex: 20 }}>
-                              ② {size1}%
-                            </div>
+                            {renderOnePhoto(photos[1], 1, 240, 200)}
                           </div>
                         </div>
                       );
@@ -2718,105 +3209,276 @@
                   };
                   
                   return (
-                    <div key={issue.id} style={{ background: 'white', width: 950, borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.4)', overflow: 'hidden' }}>
-                      {/* 페이지 번호 */}
-                      <div style={{ textAlign: 'center', padding: 10, background: '#f8f9fa', color: '#6b7280', fontSize: 12, fontWeight: 600, borderBottom: '1px solid #eee' }}>
-                        페이지 {idx + 2} / {previewIssues.length + 1}
+                    <div key={issue.id} style={{ background: 'white', width: 1100, borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.4)', overflow: 'hidden' }}>
+                      <div style={{ textAlign: 'center', padding: 10, background: '#f0f0f0', color: '#6b7280', fontSize: 12, fontWeight: 600 }}>
+                        페이지 {idx + 3} / {previewIssues.length + 2}
                       </div>
                       
-                      <div style={{ padding: '24px 32px' }}>
-                        <h1 style={{ color: '#1e3a5f', fontSize: 26, fontWeight: 800, margin: '0 0 20px 0' }}>Safety / 5S+</h1>
+                      <div style={{ padding: '30px 40px', fontFamily: 'Arial, sans-serif', color: '#000' }}>
+                        <h1 style={{ color: '#1e3a5f', fontSize: 32, fontWeight: 800, margin: '0 0 25px 0' }}>Safety / 5S+</h1>
                         
-                        {/* Finding# */}
-                        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20, fontSize: 14 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 25, fontSize: 15, tableLayout: 'fixed' }}>
                           <tbody>
                             <tr>
-                              <td style={{ padding: '10px 14px', width: '15%', fontWeight: 700, border: '1px solid #ddd' }}>Finding#</td>
-                              <td style={{ padding: '10px 14px', width: '35%', border: '1px solid #ddd' }}>{findingNum}</td>
-                              <td style={{ padding: '10px 14px', width: '22%', fontWeight: 700, border: '1px solid #ddd' }}>Location/Dept/Response</td>
-                              <td style={{ padding: '10px 14px', width: '28%', border: '1px solid #ddd' }}>{issue.department} – {issue.manager || 'N/A'}</td>
+                              <td style={{ padding: '12px 18px', width: '15%', fontWeight: 700, border: '1px solid #333' }}>Finding#</td>
+                              <td style={{ padding: '12px 18px', width: '35%', border: '1px solid #333' }}>{findingNum}</td>
+                              <td style={{ padding: '12px 18px', width: '22%', fontWeight: 700, border: '1px solid #333' }}>Location/Dept/Response</td>
+                              <td style={{ padding: '12px 18px', width: '28%', border: '1px solid #333' }}>{issue.department} – {issue.manager || 'N/A'}</td>
                             </tr>
                           </tbody>
                         </table>
                         
-                        {/* Before/After */}
-                        <table style={{ width: '100%', borderCollapse: 'collapse', overflow: 'visible' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                           <thead>
                             <tr>
-                              <th style={{ background: '#be185d', color: 'white', padding: 14, width: '50%', fontSize: 16, fontWeight: 600, border: '1px solid #ccc' }}>Before</th>
-                              <th style={{ background: '#10b981', color: 'white', padding: 14, width: '50%', fontSize: 16, fontWeight: 600, border: '1px solid #ccc' }}>After</th>
+                              <th style={{ background: '#ff0000', color: '#000', padding: 16, width: '50%', fontSize: 18, fontWeight: 600, border: '1px solid #333' }}>Before</th>
+                              <th style={{ background: '#00ff00', color: '#000', padding: 16, width: '50%', fontSize: 18, fontWeight: 600, border: '1px solid #333' }}>After</th>
                             </tr>
                           </thead>
                           <tbody>
                             <tr>
-                              <td style={{ border: '1px solid #ddd', padding: 16, height: 340, verticalAlign: 'top', textAlign: 'left', background: '#fafafa', position: 'relative', overflow: 'visible' }}>
-                                {renderResizableImage(issue.issuePhotos, 'before', sizes)}
+                              <td style={{ border: '1px solid #333', padding: 0, verticalAlign: 'top', background: 'white', position: 'relative' }}>
+                                <div style={{ height: 380, padding: 15, overflow: 'hidden', position: 'relative', boxSizing: 'border-box' }}>
+                                  {renderResizableImage(issue.issuePhotos, 'before', sizes)}
+                                </div>
                               </td>
-                              <td style={{ border: '1px solid #ddd', padding: 16, height: 340, verticalAlign: 'top', textAlign: 'left', background: '#fafafa', position: 'relative', overflow: 'visible' }}>
-                                {renderResizableImage(issue.actionPhotos, 'after', sizes)}
+                              <td style={{ border: '1px solid #333', padding: 0, verticalAlign: 'top', background: 'white', position: 'relative' }}>
+                                <div style={{ height: 380, padding: 15, overflow: 'hidden', position: 'relative', boxSizing: 'border-box' }}>
+                                  {renderResizableImage(issue.actionPhotos, 'after', sizes)}
+                                </div>
                               </td>
                             </tr>
                             <tr>
-                              <td style={{ border: '1px solid #ddd', padding: 14, height: 90, verticalAlign: 'top', fontSize: 14, lineHeight: 1.6 }}>{issue.description || ''}</td>
-                              <td style={{ border: '1px solid #ddd', padding: 14, height: 90, verticalAlign: 'top', fontSize: 14, lineHeight: 1.6 }}>{issue.actionContent || ''}</td>
+                              <td style={{ border: '1px solid #333', padding: '18px 22px', verticalAlign: 'top', height: 120, fontSize: 15, lineHeight: 1.7 }}>{issue.description || ''}</td>
+                              <td style={{ border: '1px solid #333', padding: '18px 22px', verticalAlign: 'top', height: 120, fontSize: 15, lineHeight: 1.7 }}>{issue.actionContent || ''}</td>
                             </tr>
                           </tbody>
                         </table>
                         
-                        <div style={{ textAlign: 'right', marginTop: 16, fontSize: 13, color: '#6b7280' }}>{idx + 2}</div>
+                        <div style={{ textAlign: 'right', marginTop: 20 }}><span style={{ fontSize: 14, color: '#6b7280' }}>{idx + 3}</span></div>
                       </div>
                     </div>
                   );
                 })}
                 
                 {previewIssues.length === 0 && (
-                  <div style={{ background: 'white', width: 950, padding: 60, borderRadius: 4, textAlign: 'center', color: '#666' }}>
+                  <div style={{ background: 'white', width: 1100, padding: 60, borderRadius: 4, textAlign: 'center', color: '#666' }}>
                     해당 기간에 등록된 이슈가 없습니다.
                   </div>
                 )}
+
                 
                 <div style={{ height: 40 }} />
               </div>
             </div>
           )}
 
-          {/* 이미지 뷰어 모달 */}
-          {viewerImage && (
-            <div 
-              style={{ 
-                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
-                background: 'rgba(0,0,0,0.95)', 
-                display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                zIndex: 9999,
-                cursor: 'zoom-out'
-              }} 
-              onClick={() => setViewerImage(null)}
-            >
-              <button 
-                onClick={() => setViewerImage(null)}
-                style={{ 
-                  position: 'absolute', top: 20, right: 20, 
-                  background: 'rgba(255,255,255,0.2)', border: 'none', 
-                  color: 'white', fontSize: 24, width: 50, height: 50, 
-                  borderRadius: '50%', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center'
-                }}
-              >
-                ✕
-              </button>
-              <img 
-                src={viewerImage} 
-                style={{ 
-                  maxWidth: '90vw', maxHeight: '90vh', 
-                  objectFit: 'contain', 
-                  borderRadius: 8,
-                  boxShadow: '0 4px 30px rgba(0,0,0,0.5)'
-                }} 
-                alt="" 
-                onClick={(e) => e.stopPropagation()}
-              />
-            </div>
-          )}
+          {/* 이미지 주석 뷰어 모달 */}
+          {viewerImage && (() => {
+            const drawCanvas = (shapes, currentDraw) => {
+              const canvas = canvasRef.current;
+              const img = annotImgRef.current;
+              if (!canvas || !img) return;
+              const ctx = canvas.getContext('2d');
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              
+              const allShapes = currentDraw ? [...shapes, currentDraw] : shapes;
+              allShapes.forEach(s => {
+                ctx.strokeStyle = s.color;
+                ctx.lineWidth = 3;
+                ctx.setLineDash([]);
+                if (s.tool === 'circle') {
+                  const cx = (s.x1 + s.x2) / 2;
+                  const cy = (s.y1 + s.y2) / 2;
+                  const rx = Math.abs(s.x2 - s.x1) / 2;
+                  const ry = Math.abs(s.y2 - s.y1) / 2;
+                  ctx.beginPath();
+                  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+                  ctx.stroke();
+                } else if (s.tool === 'rect') {
+                  ctx.strokeRect(s.x1, s.y1, s.x2 - s.x1, s.y2 - s.y1);
+                } else if (s.tool === 'arrow') {
+                  const dx = s.x2 - s.x1;
+                  const dy = s.y2 - s.y1;
+                  const angle = Math.atan2(dy, dx);
+                  const len = Math.sqrt(dx*dx + dy*dy);
+                  const headLen = Math.min(20, len * 0.3);
+                  ctx.beginPath();
+                  ctx.moveTo(s.x1, s.y1);
+                  ctx.lineTo(s.x2, s.y2);
+                  ctx.stroke();
+                  ctx.beginPath();
+                  ctx.moveTo(s.x2, s.y2);
+                  ctx.lineTo(s.x2 - headLen * Math.cos(angle - Math.PI/6), s.y2 - headLen * Math.sin(angle - Math.PI/6));
+                  ctx.moveTo(s.x2, s.y2);
+                  ctx.lineTo(s.x2 - headLen * Math.cos(angle + Math.PI/6), s.y2 - headLen * Math.sin(angle + Math.PI/6));
+                  ctx.stroke();
+                }
+              });
+            };
+            
+            const getPos = (e) => {
+              const canvas = canvasRef.current;
+              if (!canvas) return {x:0, y:0};
+              const rect = canvas.getBoundingClientRect();
+              return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+            };
+            
+            return (
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.95)', zIndex: 9999, display: 'flex', flexDirection: 'column' }}>
+                {/* 상단 툴바 */}
+                <div style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(30,30,50,0.95)', borderBottom: '1px solid rgba(255,255,255,0.1)' }} onClick={e => e.stopPropagation()}>
+                  {viewerImage.type === 'issue' ? (
+                    <>
+                      <span style={{ color: 'white', fontSize: 14, fontWeight: 600, marginRight: 8 }}>🖊️ 주석 도구</span>
+                      {[
+                        { id: 'circle', icon: '⭕', label: '원형' },
+                        { id: 'rect', icon: '⬜', label: '네모' },
+                        { id: 'arrow', icon: '➡️', label: '화살표' }
+                      ].map(t => (
+                        <button key={t.id} onClick={() => setAnnotTool(annotTool === t.id ? '' : t.id)} style={{
+                          padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                          background: annotTool === t.id ? '#3b82f6' : 'rgba(255,255,255,0.15)',
+                          color: annotTool === t.id ? 'white' : 'rgba(255,255,255,0.8)'
+                        }}>{t.icon} {t.label}</button>
+                      ))}
+                      
+                      <span style={{ color: 'rgba(255,255,255,0.5)', margin: '0 4px' }}>|</span>
+                      
+                      {['#ff0000', '#00ff00', '#ffff00', '#00bfff', '#ffffff'].map(c => (
+                        <button key={c} onClick={() => setAnnotColor(c)} style={{
+                          width: 28, height: 28, borderRadius: '50%', border: annotColor === c ? '3px solid white' : '2px solid rgba(255,255,255,0.3)',
+                          background: c, cursor: 'pointer', padding: 0
+                        }} />
+                      ))}
+                      
+                      <span style={{ color: 'rgba(255,255,255,0.5)', margin: '0 4px' }}>|</span>
+                      
+                      <button onClick={() => setAnnotShapes(s => s.slice(0, -1))} disabled={annotShapes.length === 0} style={{
+                        padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13,
+                        background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.8)', opacity: annotShapes.length === 0 ? 0.3 : 1
+                      }}>↩️ 실행취소</button>
+                      
+                      <button onClick={() => setAnnotShapes([])} style={{
+                        padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13,
+                        background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.8)'
+                      }}>🗑️ 전체삭제</button>
+                      
+                      <div style={{ flex: 1 }} />
+                      
+                      {annotShapes.length > 0 && (
+                        <button onClick={async () => {
+                          const canvas = canvasRef.current;
+                          if (!canvas) return;
+                          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                          const info = viewerImage;
+                          const updated = issues.map(issue => {
+                            if (issue.id !== info.issueId) return issue;
+                            const field = info.type === 'issue' ? 'issuePhotos' : 'actionPhotos';
+                            const photos = [...(issue[field] || [])];
+                            photos[info.index] = dataUrl;
+                            return { ...issue, [field]: photos };
+                          });
+                          setIssues(updated);
+                          const updatedIssue = updated.find(i => i.id === info.issueId);
+                          try {
+                            await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'updateIssue', issue: updatedIssue }) });
+                          } catch(err) { console.error(err); }
+                          setAnnotShapes([]);
+                          setAnnotTool('');
+                          setViewerImage({...info, src: dataUrl});
+                          alert('저장 완료!');
+                        }} style={{
+                          padding: '8px 20px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 700,
+                          background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white'
+                        }}>💾 저장</button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ color: 'white', fontSize: 14, fontWeight: 600 }}>🔍 조치사진 보기</span>
+                      <div style={{ flex: 1 }} />
+                    </>
+                  )}
+                  
+                  <button onClick={() => { setViewerImage(null); setAnnotShapes([]); setAnnotTool(''); setAnnotDrawing(null); }} style={{
+                    padding: '8px 20px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 14,
+                    background: 'rgba(255,255,255,0.2)', color: 'white'
+                  }}>✕ 닫기</button>
+                </div>
+                
+                {/* 이미지 영역: 지적사진=캔버스, 조치사진=단순보기 */}
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+                  onClick={() => { if (viewerImage.type !== 'issue') { setViewerImage(null); } }}
+                >
+                  {viewerImage.type === 'issue' ? (
+                    <>
+                      <img 
+                        ref={annotImgRef}
+                        src={viewerImage.src} 
+                        style={{ display: 'none' }}
+                        crossOrigin="anonymous"
+                        onLoad={(e) => {
+                          const img = e.target;
+                          const canvas = canvasRef.current;
+                          if (!canvas) return;
+                          const maxW = window.innerWidth * 0.9;
+                          const maxH = (window.innerHeight - 70) * 0.95;
+                          let w = img.naturalWidth;
+                          let h = img.naturalHeight;
+                          const ratio = Math.min(maxW / w, maxH / h, 1);
+                          canvas.width = w * ratio;
+                          canvas.height = h * ratio;
+                          const ctx = canvas.getContext('2d');
+                          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        }}
+                      />
+                      <canvas 
+                        ref={canvasRef}
+                        style={{ 
+                          borderRadius: 4, cursor: annotTool ? 'crosshair' : 'default',
+                          boxShadow: '0 4px 30px rgba(0,0,0,0.5)'
+                        }}
+                        onMouseDown={(e) => {
+                          if (!annotTool) return;
+                          const pos = getPos(e);
+                          setAnnotDrawing({ x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y, tool: annotTool, color: annotColor });
+                        }}
+                        onMouseMove={(e) => {
+                          if (!annotDrawing) return;
+                          const pos = getPos(e);
+                          const cur = { ...annotDrawing, x2: pos.x, y2: pos.y };
+                          setAnnotDrawing(cur);
+                          drawCanvas(annotShapes, cur);
+                        }}
+                        onMouseUp={(e) => {
+                          if (!annotDrawing) return;
+                          const pos = getPos(e);
+                          const final = { ...annotDrawing, x2: pos.x, y2: pos.y };
+                          const dx = Math.abs(final.x2 - final.x1);
+                          const dy = Math.abs(final.y2 - final.y1);
+                          if (dx > 5 || dy > 5) {
+                            const newShapes = [...annotShapes, final];
+                            setAnnotShapes(newShapes);
+                            drawCanvas(newShapes, null);
+                          }
+                          setAnnotDrawing(null);
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <img 
+                      src={viewerImage.src} 
+                      style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 4px 30px rgba(0,0,0,0.5)' }} 
+                      alt=""
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       );
     }
