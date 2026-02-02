@@ -19,6 +19,11 @@
       .mobile-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
       .mobile-scroll table { min-width: 800px; }
     }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
@@ -38,8 +43,13 @@
       const [selectedDeptForAction, setSelectedDeptForAction] = useState(null);
       const [isLoading, setIsLoading] = useState(true);
       const [isSaving, setIsSaving] = useState(false);
+      const [savingMessage, setSavingMessage] = useState(''); // 팝업 메시지
       const [uploadProgress, setUploadProgress] = useState({ uploaded: 0, total: 0, show: false });
-      const [adminPw, setAdminPw] = useState('admin123');
+      const [adminPw, setAdminPw] = useState('eaton12!@');
+      
+      // 테이블 필터
+      const [mainFilters, setMainFilters] = useState({ supervisor: '', department: '', manager: '', status: '' });
+      const [actionFilters, setActionFilters] = useState({ supervisor: '', manager: '', status: '' });
       
       // 화면 크기 감지
       useEffect(() => {
@@ -250,7 +260,7 @@
         btnDanger: { padding: isMobile ? '8px 14px' : '10px 20px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', borderRadius: 8, color: 'white', cursor: 'pointer', fontWeight: 500, fontSize: isMobile ? 12 : 14 },
         table: { width: '100%', borderCollapse: 'collapse', background: 'rgba(255,255,255,0.03)', borderRadius: 12, overflow: 'hidden' },
         th: { padding: isMobile ? '10px 8px' : '14px 12px', textAlign: 'left', background: 'rgba(99, 102, 241, 0.2)', fontSize: isMobile ? 11 : 13, fontWeight: 600, color: '#a5b4fc', borderBottom: '1px solid rgba(255,255,255,0.1)', whiteSpace: 'nowrap' },
-        td: { padding: isMobile ? '10px 8px' : '12px', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: isMobile ? 11 : 13, verticalAlign: 'top' },
+        td: { padding: isMobile ? '10px 8px' : '12px', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: isMobile ? 11 : 13, verticalAlign: 'middle' },
         inlineInput: { width: '100%', padding: isMobile ? '6px 8px' : '8px 10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: 'white', fontSize: isMobile ? 11 : 13 },
         modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: isMobile ? 16 : 0 },
         modalContent: { background: 'linear-gradient(135deg, #1e1e2f, #2d2d44)', padding: isMobile ? 20 : 32, borderRadius: 16, width: '95%', maxWidth: 500, maxHeight: '85vh', overflowY: 'auto' },
@@ -278,6 +288,7 @@
           return;
         }
         setIsSaving(true);
+        setSavingMessage('💾 이슈 저장 중...');
         
         try {
           // Target Date = 일자 + 30일
@@ -301,6 +312,7 @@
           alert('저장에 실패했습니다.');
         }
         setIsSaving(false);
+        setSavingMessage('');
       };
 
       const updateIssueField = async (id, field, value) => {
@@ -327,7 +339,7 @@
 
       const openReportModal = (id) => {
         const issue = issues.find(i => i.id === id);
-        if (!issue.actionContent || issue.actionContent.trim() === '') {
+        if (!issue.actionContent || String(issue.actionContent || '').trim() === '') {
           alert('조치내용을 입력해주세요.');
           return;
         }
@@ -407,6 +419,7 @@
 
       const handlePhotoUpload = async (id, field, files) => {
         setIsSaving(true);
+        setSavingMessage('📷 사진 업로드 중...');
         try {
           const uploadedUrls = [];
           for (const file of Array.from(files)) {
@@ -430,10 +443,12 @@
           alert('사진 업로드에 실패했습니다.');
         }
         setIsSaving(false);
+        setSavingMessage('');
       };
 
       const handleNewIssuePhoto = async (files) => {
         setIsSaving(true);
+        setSavingMessage('📷 사진 업로드 중...');
         try {
           const uploadedUrls = [];
           for (const file of Array.from(files)) {
@@ -446,6 +461,7 @@
           alert('사진 업로드에 실패했습니다.');
         }
         setIsSaving(false);
+        setSavingMessage('');
       };
 
       // 이슈 삭제 (사진 포함)
@@ -455,6 +471,7 @@
         }
         
         setIsSaving(true);
+        setSavingMessage('🗑️ 삭제 중...');
         try {
           // Google Drive에서 사진 삭제
           const allPhotos = [...(issuePhotos || []), ...(actionPhotos || [])];
@@ -486,6 +503,7 @@
           alert('삭제에 실패했습니다.');
         }
         setIsSaving(false);
+        setSavingMessage('');
       };
 
       const toggleSelect = (id) => {
@@ -667,6 +685,7 @@
       const verifyPassword = () => {
         if (pendingDept && passwordInput === String(pendingDept.password)) {
           setSelectedDeptForAction(pendingDept.name);
+          setActionFilters({ supervisor: '', manager: '', status: '' });
           setShowPasswordModal(false);
           setPasswordInput('');
           setPendingDept(null);
@@ -1421,11 +1440,13 @@
 
       return (
         <div style={styles.container}>
-          {/* 저장 중 인디케이터 */}
+          {/* 저장/삭제/업로드 중 팝업 */}
           {isSaving && (
-            <div style={{ position: 'fixed', top: 20, right: 20, background: 'rgba(99, 102, 241, 0.9)', padding: '10px 20px', borderRadius: 8, zIndex: 9999, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span>💾</span>
-              <span style={{ fontSize: 14 }}>저장 중...</span>
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ background: 'rgba(30,30,50,0.95)', padding: '30px 50px', borderRadius: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <div style={{ width: 40, height: 40, border: '4px solid rgba(255,255,255,0.2)', borderTop: '4px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                <span style={{ fontSize: 16, color: 'white', fontWeight: 600 }}>{savingMessage || '처리 중...'}</span>
+              </div>
             </div>
           )}
           
@@ -1492,23 +1513,65 @@
                     <tr>
                       <th style={{...styles.th, width: 40}}></th>
                       <th style={{...styles.th, width: 100}}>일자</th>
-                      <th style={{...styles.th, width: 90}}>주관</th>
-                      <th style={{...styles.th, width: 90}}>부서</th>
-                      <th style={{...styles.th, width: 90}}>담당자</th>
+                      <th style={{...styles.th, width: 90}}>
+                        <div>주관</div>
+                        <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={mainFilters.supervisor} onChange={e => setMainFilters({...mainFilters, supervisor: e.target.value})}>
+                          <option value="">전체</option>
+                          {[...new Set(issues.map(i => i.supervisor).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                      </th>
+                      <th style={{...styles.th, width: 90}}>
+                        <div>부서</div>
+                        <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={mainFilters.department} onChange={e => setMainFilters({...mainFilters, department: e.target.value})}>
+                          <option value="">전체</option>
+                          {[...new Set(issues.map(i => i.department).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                      </th>
+                      <th style={{...styles.th, width: 90}}>
+                        <div>담당자</div>
+                        <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={mainFilters.manager} onChange={e => setMainFilters({...mainFilters, manager: e.target.value})}>
+                          <option value="">전체</option>
+                          {[...new Set(issues.map(i => i.manager).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                      </th>
                       <th style={{...styles.th, minWidth: 150}}>내용(설명)</th>
                       <th style={{...styles.th, width: 100}}>지적사진</th>
                       <th style={{...styles.th, minWidth: 150}}>조치내용</th>
                       <th style={{...styles.th, width: 100}}>조치사진</th>
-                      <th style={{...styles.th, width: 130}}>상태</th>
+                      <th style={{...styles.th, width: 130}}>
+                        <div>상태</div>
+                        <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={mainFilters.status} onChange={e => setMainFilters({...mainFilters, status: e.target.value})}>
+                          <option value="">전체</option>
+                          <option value="Ongoing">Ongoing</option>
+                          <option value="Under Review">Under Review</option>
+                          <option value="Complete">Complete</option>
+                        </select>
+                      </th>
                       <th style={{...styles.th, width: 110}}>Target Date</th>
                       <th style={{...styles.th, width: 110}}>개선날짜</th>
                       <th style={{...styles.th, width: 60}}>삭제</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {issues.length === 0 ? (
-                      <tr><td colSpan="13" style={{...styles.td, textAlign: 'center', padding: 60, color: 'rgba(255,255,255,0.4)'}}>등록된 이슈가 없습니다.</td></tr>
-                    ) : issues.map(issue => {
+                    {(() => {
+                      const filtered = issues.filter(i => {
+                        if (mainFilters.supervisor && i.supervisor !== mainFilters.supervisor) return false;
+                        if (mainFilters.department && i.department !== mainFilters.department) return false;
+                        if (mainFilters.manager && i.manager !== mainFilters.manager) return false;
+                        if (mainFilters.status && i.status !== mainFilters.status) return false;
+                        return true;
+                      });
+                      if (filtered.length === 0) {
+                        return <tr><td colSpan="13" style={{...styles.td, textAlign: 'center', padding: 60, color: 'rgba(255,255,255,0.4)'}}>
+                          {issues.length === 0 ? '등록된 이슈가 없습니다.' : '필터 조건에 맞는 이슈가 없습니다.'}
+                          {(mainFilters.supervisor || mainFilters.department || mainFilters.manager || mainFilters.status) && (
+                            <div style={{ marginTop: 12 }}>
+                              <button style={{ background: 'rgba(99,102,241,0.3)', border: 'none', color: '#a5b4fc', padding: '6px 16px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }} onClick={() => setMainFilters({ supervisor: '', department: '', manager: '', status: '' })}>🔄 필터 초기화</button>
+                            </div>
+                          )}
+                        </td></tr>;
+                      }
+                      return filtered.map(issue => {
                       // Target Date가 없으면 일자 + 30일로 계산
                       const targetDate = issue.targetDate || (() => {
                         if (issue.date) {
@@ -1601,10 +1664,22 @@
                           </button>
                         </td>
                       </tr>
-                    )})}
+                    )});
+                    })()}
                   </tbody>
                 </table>
               </div>
+              {/* 필터 활성 표시 */}
+              {(mainFilters.supervisor || mainFilters.department || mainFilters.manager || mainFilters.status) && (
+                <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>🔍 필터 적용 중:</span>
+                  {mainFilters.supervisor && <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(99,102,241,0.2)', borderRadius: 12, color: '#a5b4fc' }}>주관: {mainFilters.supervisor}</span>}
+                  {mainFilters.department && <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(99,102,241,0.2)', borderRadius: 12, color: '#a5b4fc' }}>부서: {mainFilters.department}</span>}
+                  {mainFilters.manager && <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(99,102,241,0.2)', borderRadius: 12, color: '#a5b4fc' }}>담당자: {mainFilters.manager}</span>}
+                  {mainFilters.status && <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(99,102,241,0.2)', borderRadius: 12, color: '#a5b4fc' }}>상태: {mainFilters.status}</span>}
+                  <button style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 12, padding: '2px 8px' }} onClick={() => setMainFilters({ supervisor: '', department: '', manager: '', status: '' })}>✕ 초기화</button>
+                </div>
+              )}
             </>
           )}
 
@@ -2011,7 +2086,7 @@
               ) : (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 16, marginBottom: 20, flexWrap: 'wrap' }}>
-                    <button style={{...styles.btnSecondary, padding: isMobile ? '6px 12px' : '10px 20px', fontSize: isMobile ? 12 : 14}} onClick={() => setSelectedDeptForAction(null)}>← 부서</button>
+                    <button style={{...styles.btnSecondary, padding: isMobile ? '6px 12px' : '10px 20px', fontSize: isMobile ? 12 : 14}} onClick={() => { setSelectedDeptForAction(null); setActionFilters({ supervisor: '', manager: '', status: '' }); }}>← 부서</button>
                     <h3 style={{ color: '#a5b4fc', fontSize: isMobile ? 14 : 18 }}>{selectedDeptForAction} - 조치 입력</h3>
                   </div>
                   
@@ -2046,9 +2121,34 @@
                   {/* 모바일: 카드 형태 */}
                   {isMobile ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {issues.filter(i => i.department === selectedDeptForAction).length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: 40, color: 'rgba(255,255,255,0.4)' }}>해당 부서의 이슈가 없습니다.</div>
-                      ) : issues.filter(i => i.department === selectedDeptForAction).map(issue => {
+                      {/* 모바일 필터 */}
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <select style={{ flex: 1, minWidth: 80, padding: '6px 8px', fontSize: 11, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6 }} value={actionFilters.supervisor} onChange={e => setActionFilters({...actionFilters, supervisor: e.target.value})}>
+                          <option value="">주관: 전체</option>
+                          {[...new Set(issues.filter(i => i.department === selectedDeptForAction).map(i => i.supervisor).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                        <select style={{ flex: 1, minWidth: 80, padding: '6px 8px', fontSize: 11, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6 }} value={actionFilters.status} onChange={e => setActionFilters({...actionFilters, status: e.target.value})}>
+                          <option value="">상태: 전체</option>
+                          <option value="Ongoing">Ongoing</option>
+                          <option value="Under Review">Under Review</option>
+                          <option value="Complete">Complete</option>
+                        </select>
+                        {(actionFilters.supervisor || actionFilters.manager || actionFilters.status) && (
+                          <button style={{ padding: '6px 10px', fontSize: 11, background: 'rgba(239,68,68,0.2)', color: '#ef4444', border: 'none', borderRadius: 6, cursor: 'pointer' }} onClick={() => setActionFilters({ supervisor: '', manager: '', status: '' })}>✕</button>
+                        )}
+                      </div>
+                      {(() => {
+                        const deptIssues = issues.filter(i => i.department === selectedDeptForAction);
+                        const filtered = deptIssues.filter(i => {
+                          if (actionFilters.supervisor && i.supervisor !== actionFilters.supervisor) return false;
+                          if (actionFilters.manager && i.manager !== actionFilters.manager) return false;
+                          if (actionFilters.status && i.status !== actionFilters.status) return false;
+                          return true;
+                        });
+                        if (filtered.length === 0) {
+                          return <div style={{ textAlign: 'center', padding: 40, color: 'rgba(255,255,255,0.4)' }}>{deptIssues.length === 0 ? '해당 부서의 이슈가 없습니다.' : '필터 조건에 맞는 이슈가 없습니다.'}</div>;
+                        }
+                        return filtered.map(issue => {
                         const targetDate = issue.targetDate || (() => {
                           if (issue.date) {
                             const dp = safeParseDate(issue.date);
@@ -2058,7 +2158,7 @@
                           return '';
                         })();
                         const isOverdue = targetDate && new Date(targetDate) < new Date() && issue.status !== 'Complete';
-                        const canReport = issue.actionContent && issue.actionContent.trim() !== '' && issue.actionPhotos && issue.actionPhotos.length > 0;
+                        const canReport = issue.actionContent && String(issue.actionContent || '').trim() !== '' && issue.actionPhotos && issue.actionPhotos.length > 0;
                         
                         return (
                           <div key={issue.id} style={{ 
@@ -2136,30 +2236,68 @@
                             </div>
                           </div>
                         );
-                      })}
+                      });
+                      })()}
                     </div>
                   ) : (
                     /* PC: 테이블 형태 */
+                    <>
                     <div style={{ overflowX: 'auto' }}>
                     <table style={styles.table}>
                       <thead>
                         <tr>
                           <th style={{...styles.th, width: 100}}>일자</th>
-                          <th style={{...styles.th, width: 100}}>주관</th>
-                          <th style={{...styles.th, width: 120}}>담당자</th>
+                          <th style={{...styles.th, width: 100}}>
+                            <div>주관</div>
+                            <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={actionFilters.supervisor} onChange={e => setActionFilters({...actionFilters, supervisor: e.target.value})}>
+                              <option value="">전체</option>
+                              {[...new Set(issues.filter(i => i.department === selectedDeptForAction).map(i => i.supervisor).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                          </th>
+                          <th style={{...styles.th, width: 120}}>
+                            <div>담당자</div>
+                            <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={actionFilters.manager} onChange={e => setActionFilters({...actionFilters, manager: e.target.value})}>
+                              <option value="">전체</option>
+                              {[...new Set(issues.filter(i => i.department === selectedDeptForAction).map(i => i.manager).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                          </th>
                           <th style={{...styles.th, minWidth: 180}}>내용(설명)</th>
                           <th style={{...styles.th, width: 120}}>지적사진</th>
                           <th style={{...styles.th, minWidth: 180}}>조치내용</th>
                           <th style={{...styles.th, width: 120}}>조치사진</th>
-                          <th style={{...styles.th, width: 120}}>상태</th>
+                          <th style={{...styles.th, width: 120}}>
+                            <div>상태</div>
+                            <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={actionFilters.status} onChange={e => setActionFilters({...actionFilters, status: e.target.value})}>
+                              <option value="">전체</option>
+                              <option value="Ongoing">Ongoing</option>
+                              <option value="Under Review">Under Review</option>
+                              <option value="Complete">Complete</option>
+                            </select>
+                          </th>
                           <th style={{...styles.th, width: 100}}>Target Date</th>
                           <th style={{...styles.th, width: 90}}>보고</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {issues.filter(i => i.department === selectedDeptForAction).length === 0 ? (
-                          <tr><td colSpan="10" style={{...styles.td, textAlign: 'center', padding: 60, color: 'rgba(255,255,255,0.4)'}}>해당 부서의 이슈가 없습니다.</td></tr>
-                        ) : issues.filter(i => i.department === selectedDeptForAction).map(issue => {
+                        {(() => {
+                          const deptIssues = issues.filter(i => i.department === selectedDeptForAction);
+                          const filtered = deptIssues.filter(i => {
+                            if (actionFilters.supervisor && i.supervisor !== actionFilters.supervisor) return false;
+                            if (actionFilters.manager && i.manager !== actionFilters.manager) return false;
+                            if (actionFilters.status && i.status !== actionFilters.status) return false;
+                            return true;
+                          });
+                          if (filtered.length === 0) {
+                            return <tr><td colSpan="10" style={{...styles.td, textAlign: 'center', padding: 60, color: 'rgba(255,255,255,0.4)'}}>
+                              {deptIssues.length === 0 ? '해당 부서의 이슈가 없습니다.' : '필터 조건에 맞는 이슈가 없습니다.'}
+                              {(actionFilters.supervisor || actionFilters.manager || actionFilters.status) && (
+                                <div style={{ marginTop: 12 }}>
+                                  <button style={{ background: 'rgba(99,102,241,0.3)', border: 'none', color: '#a5b4fc', padding: '6px 16px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }} onClick={() => setActionFilters({ supervisor: '', manager: '', status: '' })}>🔄 필터 초기화</button>
+                                </div>
+                              )}
+                            </td></tr>;
+                          }
+                          return filtered.map(issue => {
                           // Target Date 계산
                           const targetDate = issue.targetDate || (() => {
                             if (issue.date) {
@@ -2212,7 +2350,7 @@
                             </td>
                             <td style={styles.td}>
                               {(() => {
-                                const canReport = issue.actionContent && issue.actionContent.trim() !== '' && issue.actionPhotos && issue.actionPhotos.length > 0;
+                                const canReport = issue.actionContent && String(issue.actionContent || '').trim() !== '' && issue.actionPhotos && issue.actionPhotos.length > 0;
                                 if (issue.status === 'Complete') {
                                   return <span style={{ padding: '6px 10px', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderRadius: 6, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>✓ 완료</span>;
                                 } else if (issue.status === 'Under Review') {
@@ -2238,10 +2376,22 @@
                               })()}
                             </td>
                           </tr>
-                        )})}
+                        )});
+                        })()}
                       </tbody>
                     </table>
                   </div>
+                  {/* 필터 활성 표시 */}
+                  {(actionFilters.supervisor || actionFilters.manager || actionFilters.status) && (
+                    <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>🔍 필터 적용 중:</span>
+                      {actionFilters.supervisor && <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(99,102,241,0.2)', borderRadius: 12, color: '#a5b4fc' }}>주관: {actionFilters.supervisor}</span>}
+                      {actionFilters.manager && <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(99,102,241,0.2)', borderRadius: 12, color: '#a5b4fc' }}>담당자: {actionFilters.manager}</span>}
+                      {actionFilters.status && <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(99,102,241,0.2)', borderRadius: 12, color: '#a5b4fc' }}>상태: {actionFilters.status}</span>}
+                      <button style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 12, padding: '2px 8px' }} onClick={() => setActionFilters({ supervisor: '', manager: '', status: '' })}>✕ 초기화</button>
+                    </div>
+                  )}
+                  </>
                   )}
                 </>
               )}
