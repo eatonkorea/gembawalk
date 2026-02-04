@@ -233,10 +233,16 @@
       const [currentPreviewPage, setCurrentPreviewPage] = useState(0);
       const [resizingImage, setResizingImage] = useState(null);
       const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, size: 100 });
+      
+      // PDF 스타일 설정
+      const [pdfTitleColor, setPdfTitleColor] = useState('#1e6bb8'); // 제목 색상
+      const [pdfFontScale, setPdfFontScale] = useState(1); // 글씨 크기 배율
+      const [pdfHeaderBg, setPdfHeaderBg] = useState('#be185d'); // 테이블 헤더 배경색
       const [viewerImage, setViewerImage] = useState(null); // 이미지 뷰어 {src, issueId, type, index}
-      const [annotTool, setAnnotTool] = useState(''); // '', 'circle', 'rect', 'arrow'
+      const [annotTool, setAnnotTool] = useState(''); // '', 'pen', 'circle', 'rect', 'arrow'
       const [annotColor, setAnnotColor] = useState('#ff0000');
       const [annotLineWidth, setAnnotLineWidth] = useState(3); // 두께: 2, 3, 5, 8
+      const [annotDashed, setAnnotDashed] = useState(false); // 점선 여부
       const [annotShapes, setAnnotShapes] = useState([]);
       const [annotDrawing, setAnnotDrawing] = useState(null); // {startX, startY}
       const canvasRef = React.useRef(null);
@@ -1052,12 +1058,14 @@
           const closed = deptIssues.filter(i => i.status === 'Complete').length;
           const rateNum = total > 0 ? Math.round((closed / total) * 100) : 0;
           const rateBg = total === 0 ? '' : rateNum === 100 ? 'background:#00ff00;' : 'background:#ffff00;';
+          const cellBg = total > 0 ? 'background:#cceeff;' : ''; // OFI 있으면 하늘색
           return {
             ofi: total,
             open: total - closed,
             closed: closed,
             rate: rateNum + '%',
-            rateBg: rateBg
+            rateBg: rateBg,
+            cellBg: cellBg
           };
         };
 
@@ -1066,41 +1074,42 @@
         const allOpen = allOfi - allClosed;
         const allRate = allOfi > 0 ? Math.round((allClosed / allOfi) * 100) + '%' : '0%';
         const allRateBg = allOfi === 0 ? '' : (allClosed === allOfi ? 'background:#00ff00;' : 'background:#ffff00;');
+        const allCellBg = allOfi > 0 ? 'background:#cceeff;' : '';
 
         // 요약 페이지 HTML
         const summaryHTML = `
-          <div id="pdf-content" style="width: 1100px; padding: 30px 40px; background: white; font-family: Arial, sans-serif; position: relative; box-sizing: border-box;">
+          <div id="pdf-content" style="width: 1100px; padding: 25px 40px; background: white; font-family: Arial, sans-serif; position: relative; box-sizing: border-box;">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-              <h1 style="color: #1e3a5f; font-size: 32px; font-weight: 800; margin-bottom: 25px;">EHS & Lean Gemba Walk Status</h1>
-              <table style="border-collapse: collapse; font-size: 13px;">
+              <h1 style="color: ${pdfTitleColor}; font-size: ${32 * pdfFontScale}px; font-weight: 800; margin-bottom: 20px;">EHS & Lean Gemba Walk Status</h1>
+              <table style="border-collapse: collapse; font-size: ${15 * pdfFontScale}px;">
                 <tr>
-                  <td style="border: 1px solid #333; padding: 6px 10px; text-align: center;"><span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background: #00ff00;"></span></td>
-                  <td style="border: 1px solid #333; padding: 6px 10px;">Completed</td>
+                  <td style="border: 1px solid #333; padding: 5px 10px; text-align: center;"><span style="display: inline-block; width: 18px; height: 18px; border-radius: 50%; background: #00ff00;"></span></td>
+                  <td style="border: 1px solid #333; padding: 5px 10px;">Completed</td>
                 </tr>
                 <tr>
-                  <td style="border: 1px solid #333; padding: 6px 10px; text-align: center;"><span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background: #ffff00;"></span></td>
-                  <td style="border: 1px solid #333; padding: 6px 10px;">Delay(within90)</td>
+                  <td style="border: 1px solid #333; padding: 5px 10px; text-align: center;"><span style="display: inline-block; width: 18px; height: 18px; border-radius: 50%; background: #ffff00;"></span></td>
+                  <td style="border: 1px solid #333; padding: 5px 10px;">Delay(within90)</td>
                 </tr>
                 <tr>
-                  <td style="border: 1px solid #333; padding: 6px 10px; text-align: center;"><span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background: #ff0000;"></span></td>
-                  <td style="border: 1px solid #333; padding: 6px 10px;">Delay(Overdue91)</td>
+                  <td style="border: 1px solid #333; padding: 5px 10px; text-align: center;"><span style="display: inline-block; width: 18px; height: 18px; border-radius: 50%; background: #ff0000;"></span></td>
+                  <td style="border: 1px solid #333; padding: 5px 10px;">Delay(Overdue91)</td>
                 </tr>
               </table>
             </div>
             
-            <h3 style="font-size: 20px; margin: 20px 0 10px 0; font-weight: 700;">EHS Gemba Audit status</h3>
-            <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 30px;">
+            <h3 style="font-size: ${22 * pdfFontScale}px; margin: 15px 0 8px 0; font-weight: 700;">EHS Gemba Audit status</h3>
+            <table style="border-collapse: collapse; font-size: ${13 * pdfFontScale}px; margin-bottom: 20px;">
               <thead>
                 <tr>
-                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #333; width: 70px;">Month</th>
-                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #333; width: 100px;">Finding Total</th>
-                  <th colspan="2" style="background: #be185d; color: white; padding: 8px; border: 1px solid #333;">Corrective Action</th>
-                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #333; width: 100px;">Close Ratio</th>
-                  <th rowspan="2" style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #333;">Detail (Open issues)</th>
+                  <th rowspan="2" style="background: ${pdfHeaderBg}; color: white; padding: 8px 6px; border: 1px solid #333; width: 50px;">Month</th>
+                  <th rowspan="2" style="background: ${pdfHeaderBg}; color: white; padding: 8px 6px; border: 1px solid #333; width: 70px;">Finding Total</th>
+                  <th colspan="2" style="background: ${pdfHeaderBg}; color: white; padding: 8px; border: 1px solid #333;">Corrective Action</th>
+                  <th rowspan="2" style="background: ${pdfHeaderBg}; color: white; padding: 8px 6px; border: 1px solid #333; width: 80px;">Close Ratio</th>
+                  <th rowspan="2" style="background: ${pdfHeaderBg}; color: white; padding: 8px 6px; border: 1px solid #333; width: 280px;">Detail (Open issues)</th>
                 </tr>
                 <tr>
-                  <th style="background: #be185d; color: white; padding: 8px; border: 1px solid #333; width: 80px;">Close #</th>
-                  <th style="background: #be185d; color: white; padding: 8px; border: 1px solid #333; width: 80px;">Open #</th>
+                  <th style="background: ${pdfHeaderBg}; color: white; padding: 8px; border: 1px solid #333; width: 70px;">Close #</th>
+                  <th style="background: ${pdfHeaderBg}; color: white; padding: 8px; border: 1px solid #333; width: 70px;">Open #</th>
                 </tr>
               </thead>
               <tbody>
@@ -1109,54 +1118,54 @@
                   const detailKey = printYear + '-' + month;
                   const ratioBg = data.ratioColor ? 'background:' + data.ratioColor + ';' : '';
                   const ratioFontColor = data.ratioColor === '#ff0000' ? 'color: white;' : '';
-                  return '<tr><td style="border: 1px solid #333; padding: 10px 8px; font-weight: 600; text-align: center;">' + month + '</td><td style="border: 1px solid #333; padding: 10px 8px; text-align: center;">' + (data.total || '') + '</td><td style="border: 1px solid #333; padding: 10px 8px; text-align: center;">' + (data.closed || '') + '</td><td style="border: 1px solid #333; padding: 10px 8px; text-align: center;">' + (data.open || '') + '</td><td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;' + ratioBg + ratioFontColor + '">' + data.ratio + '</td><td style="border: 1px solid #333; padding: 10px 8px; font-size: 12px; color: #666;">' + (monthlyDetails[detailKey] || '') + '</td></tr>';
+                  return '<tr><td style="border: 1px solid #333; padding: 6px; font-weight: 600; text-align: center;">' + month + '</td><td style="border: 1px solid #333; padding: 6px; text-align: center; font-weight: 700;">' + (data.total || '') + '</td><td style="border: 1px solid #333; padding: 6px; text-align: center; font-weight: 700;">' + (data.closed || '') + '</td><td style="border: 1px solid #333; padding: 6px; text-align: center; font-weight: 700;">' + (data.open || '') + '</td><td style="border: 1px solid #333; padding: 6px; text-align: center; font-weight: 700;' + ratioBg + ratioFontColor + '">' + data.ratio + '</td><td style="border: 1px solid #333; padding: 6px; font-size: 12px; color: #666;">' + (monthlyDetails[detailKey] || '') + '</td></tr>';
                 }).join('')}
                 <tr style="background: #fef9c3;">
-                  <td style="border: 1px solid #333; padding: 10px 8px; font-weight: 700; text-align: center;">Total</td>
-                  <td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;">${yearTotal}</td>
-                  <td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;">${yearClosed}</td>
-                  <td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;">${yearOpen}</td>
-                  <td style="border: 1px solid #333; padding: 10px 8px;"></td>
-                  <td style="border: 1px solid #333; padding: 10px 8px;"></td>
+                  <td style="border: 1px solid #333; padding: 6px; font-weight: 700; text-align: center;">Total</td>
+                  <td style="border: 1px solid #333; padding: 6px; text-align: center; font-weight: 700;">${yearTotal}</td>
+                  <td style="border: 1px solid #333; padding: 6px; text-align: center; font-weight: 700;">${yearClosed}</td>
+                  <td style="border: 1px solid #333; padding: 6px; text-align: center; font-weight: 700;">${yearOpen}</td>
+                  <td style="border: 1px solid #333; padding: 6px;"></td>
+                  <td style="border: 1px solid #333; padding: 6px;"></td>
                 </tr>
               </tbody>
             </table>
 
-            <h3 style="font-size: 20px; margin: 25px 0 10px 0; color: #000; font-weight: 700;">Open status for ${printMonth === 'All' ? printYear + ' All' : printMonth + ' ' + printYear}</h3>
-            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <h3 style="font-size: ${22 * pdfFontScale}px; margin: 20px 0 8px 0; color: #000; font-weight: 700;">Open status for ${printMonth === 'All' ? printYear + ' All' : printMonth + ' ' + printYear}</h3>
+            <table style="border-collapse: collapse; font-size: ${13 * pdfFontScale}px;">
               <thead>
                 <tr>
-                  <th style="background: #fef9c3; padding: 12px 8px; border: 1px solid #333; width: 120px;"></th>
-                  ${departments.map(d => '<th style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #333;">' + d.name + '</th>').join('')}
-                  <th style="background: #be185d; color: white; padding: 12px 8px; border: 1px solid #333;">All</th>
+                  <th style="background: #fef9c3; padding: 8px 6px; border: 1px solid #333; width: 70px;"></th>
+                  ${departments.map(d => '<th style="background: ' + pdfHeaderBg + '; color: white; padding: 8px 12px; border: 1px solid #333;">' + d.name + '</th>').join('')}
+                  <th style="background: ${pdfHeaderBg}; color: white; padding: 8px 12px; border: 1px solid #333;">All</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td style="background: #fef9c3; border: 1px solid #333; padding: 10px 8px; font-weight: 600;"># of OFI</td>
-                  ${departments.map(d => '<td style="border: 1px solid #333; padding: 10px 8px; text-align: center;">' + getDeptStats(d.name).ofi + '</td>').join('')}
-                  <td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;">${allOfi}</td>
+                  <td style="background: #fef9c3; border: 1px solid #333; padding: 6px; font-weight: 600;"># of OFI</td>
+                  ${departments.map(d => '<td style="border: 1px solid #333; padding: 6px 12px; text-align: center; font-weight: 700;' + getDeptStats(d.name).cellBg + '">' + getDeptStats(d.name).ofi + '</td>').join('')}
+                  <td style="border: 1px solid #333; padding: 6px 12px; text-align: center; font-weight: 700;${allCellBg}">${allOfi}</td>
                 </tr>
                 <tr>
-                  <td style="background: #fef9c3; border: 1px solid #333; padding: 10px 8px; font-weight: 600;">Open</td>
-                  ${departments.map(d => '<td style="border: 1px solid #333; padding: 10px 8px; text-align: center;">' + getDeptStats(d.name).open + '</td>').join('')}
-                  <td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;">${allOpen}</td>
+                  <td style="background: #fef9c3; border: 1px solid #333; padding: 6px; font-weight: 600;">Open</td>
+                  ${departments.map(d => '<td style="border: 1px solid #333; padding: 6px 12px; text-align: center; font-weight: 700;' + getDeptStats(d.name).cellBg + '">' + getDeptStats(d.name).open + '</td>').join('')}
+                  <td style="border: 1px solid #333; padding: 6px 12px; text-align: center; font-weight: 700;${allCellBg}">${allOpen}</td>
                 </tr>
                 <tr>
-                  <td style="background: #fef9c3; border: 1px solid #333; padding: 10px 8px; font-weight: 600;">Closed</td>
-                  ${departments.map(d => '<td style="border: 1px solid #333; padding: 10px 8px; text-align: center;">' + getDeptStats(d.name).closed + '</td>').join('')}
-                  <td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;">${allClosed}</td>
+                  <td style="background: #fef9c3; border: 1px solid #333; padding: 6px; font-weight: 600;">Closed</td>
+                  ${departments.map(d => '<td style="border: 1px solid #333; padding: 6px 12px; text-align: center; font-weight: 700;' + getDeptStats(d.name).cellBg + '">' + getDeptStats(d.name).closed + '</td>').join('')}
+                  <td style="border: 1px solid #333; padding: 6px 12px; text-align: center; font-weight: 700;${allCellBg}">${allClosed}</td>
                 </tr>
                 <tr>
-                  <td style="background: #fef9c3; border: 1px solid #333; padding: 10px 8px; font-weight: 600;">Close Rate</td>
-                  ${departments.map(d => '<td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 600;' + getDeptStats(d.name).rateBg + '">' + getDeptStats(d.name).rate + '</td>').join('')}
-                  <td style="border: 1px solid #333; padding: 10px 8px; text-align: center; font-weight: 700;${allRateBg}">${allRate}</td>
+                  <td style="background: #fef9c3; border: 1px solid #333; padding: 6px; font-weight: 600;">Close Rate</td>
+                  ${departments.map(d => '<td style="border: 1px solid #333; padding: 6px 12px; text-align: center; font-weight: 700;' + getDeptStats(d.name).rateBg + '">' + getDeptStats(d.name).rate + '</td>').join('')}
+                  <td style="border: 1px solid #333; padding: 6px 12px; text-align: center; font-weight: 700;${allRateBg}">${allRate}</td>
                 </tr>
               </tbody>
             </table>
             
             <!-- 하단 페이지 번호 -->
-            <div style="text-align: right; margin-top: 30px;">
+            <div style="text-align: right; margin-top: 20px;">
               <span style="font-size: 12px; color: #6b7280;">2</span>
             </div>
           </div>
@@ -1198,9 +1207,9 @@
           
           return `
             <div id="issue-page-${idx}" style="width: 1100px; padding: 30px 40px; background: white; font-family: Arial, sans-serif; box-sizing: border-box;">
-              <h1 style="color: #1e3a5f; font-size: 32px; font-weight: 800; margin: 0 0 25px 0;">Safety / 5S+</h1>
+              <h1 style="color: ${pdfTitleColor}; font-size: ${32 * pdfFontScale}px; font-weight: 800; margin: 0 0 25px 0;">Safety / 5S+</h1>
               
-              <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 15px; table-layout: fixed;">
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: ${15 * pdfFontScale}px; table-layout: fixed;">
                 <tr>
                   <td style="background: white; padding: 12px 18px; width: 15%; font-weight: 700; border: 1px solid #333;">Finding#</td>
                   <td style="background: white; padding: 12px 18px; width: 35%; border: 1px solid #333;">${findingNum}</td>
@@ -1211,8 +1220,8 @@
               
               <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
                 <tr>
-                  <th style="background: #ff0000; color: #000; padding: 16px; width: 50%; font-size: 18px; font-weight: 600; border: 1px solid #333;">Before</th>
-                  <th style="background: #00ff00; color: #000; padding: 16px; width: 50%; font-size: 18px; font-weight: 600; border: 1px solid #333;">After</th>
+                  <th style="background: #ff0000; color: #000; padding: 16px; width: 50%; font-size: ${18 * pdfFontScale}px; font-weight: 600; border: 1px solid #333;">Before</th>
+                  <th style="background: #00ff00; color: #000; padding: 16px; width: 50%; font-size: ${18 * pdfFontScale}px; font-weight: 600; border: 1px solid #333;">After</th>
                 </tr>
                 <tr>
                   <td style="border: 1px solid #333; padding: 0; vertical-align: top; background: white; position: relative;">
@@ -1227,8 +1236,8 @@
                   </td>
                 </tr>
                 <tr>
-                  <td style="border: 1px solid #333; padding: 18px 22px; vertical-align: top; height: 120px; font-size: 15px; background: white; line-height: 1.7;">${issue.description || ''}</td>
-                  <td style="border: 1px solid #333; padding: 18px 22px; vertical-align: top; height: 120px; font-size: 15px; background: white; line-height: 1.7;">${issue.actionContent || ''}</td>
+                  <td style="border: 1px solid #333; padding: 18px 22px; vertical-align: top; height: 120px; font-size: ${15 * pdfFontScale}px; background: white; line-height: 1.7;">${issue.description || ''}</td>
+                  <td style="border: 1px solid #333; padding: 18px 22px; vertical-align: top; height: 120px; font-size: ${15 * pdfFontScale}px; background: white; line-height: 1.7;">${issue.actionContent || ''}</td>
                 </tr>
               </table>
               
@@ -1260,20 +1269,20 @@
           
           const coverHTML = `
             <div id="cover-page" style="width: 1100px; height: 760px; padding: 50px 60px; background: white; font-family: Arial, sans-serif; box-sizing: border-box; position: relative;">
-              <h1 style="color: #1e6bb8; font-size: 42px; font-weight: 700; margin: 0; padding-bottom: 16px; border-bottom: 3px solid #999;">Gemba Walk terms</h1>
+              <h1 style="color: ${pdfTitleColor}; font-size: ${42 * pdfFontScale}px; font-weight: 700; margin: 0; padding-bottom: 16px; border-bottom: 3px solid #999;">Gemba Walk terms</h1>
               
               <div style="margin: 50px 0 0 30px;">
-                <p style="font-size: 42px; font-weight: 700; margin: 0 0 50px 0;">
-                  <span style="color: #1e6bb8; font-size: 42px;">➤</span> Audit Date : ${auditDateFormatted}
+                <p style="font-size: ${42 * pdfFontScale}px; font-weight: 700; margin: 0 0 50px 0;">
+                  <span style="color: ${pdfTitleColor}; font-size: ${42 * pdfFontScale}px;">➤</span> Audit Date : ${auditDateFormatted}
                 </p>
                 
-                <div style="font-size: 42px; font-weight: 700; margin: 0;">
-                  <span style="color: #1e6bb8; font-size: 42px;">➤</span> Auditor : ${auditorName} – ${auditorTitle}<br>
-                  <span style="visibility: hidden;"><span style="color: #1e6bb8; font-size: 42px;">➤</span> Auditor : </span>Inhee Park - EHS Analyst
+                <div style="font-size: ${42 * pdfFontScale}px; font-weight: 700; margin: 0;">
+                  <span style="color: ${pdfTitleColor}; font-size: ${42 * pdfFontScale}px;">➤</span> Auditor : ${auditorName} – ${auditorTitle}<br>
+                  <span style="visibility: hidden;"><span style="color: ${pdfTitleColor}; font-size: ${42 * pdfFontScale}px;">➤</span> Auditor : </span>Inhee Park - EHS Analyst
                 </div>
                 
-                <p style="font-size: 42px; font-weight: 700; margin: 50px 0 0 0;">
-                  <span style="color: #1e6bb8; font-size: 42px;">➤</span> Other conditions : Integrated EHS & 5S+
+                <p style="font-size: ${42 * pdfFontScale}px; font-weight: 700; margin: 50px 0 0 0;">
+                  <span style="color: ${pdfTitleColor}; font-size: ${42 * pdfFontScale}px;">➤</span> Other conditions : Integrated EHS & 5S+
                 </p>
               </div>
             </div>
@@ -1287,9 +1296,15 @@
             backgroundColor: '#ffffff'
           });
           const coverImg = coverCanvas.toDataURL('image/png');
-          const coverImgWidth = pageWidth - 10;
-          const coverImgHeight = (coverCanvas.height * coverImgWidth) / coverCanvas.width;
-          doc.addImage(coverImg, 'PNG', 5, 5, coverImgWidth, Math.min(coverImgHeight, pageHeight - 10));
+          
+          // 비율 유지하면서 페이지에 맞추기
+          let coverW = pageWidth - 10;
+          let coverH = (coverCanvas.height * coverW) / coverCanvas.width;
+          if (coverH > pageHeight - 10) {
+            coverH = pageHeight - 10;
+            coverW = (coverCanvas.width * coverH) / coverCanvas.height;
+          }
+          doc.addImage(coverImg, 'PNG', 5, 5, coverW, coverH);
           
           // 1. 요약 페이지 생성
           doc.addPage();
@@ -1302,9 +1317,14 @@
           });
           
           const summaryImg = summaryCanvas.toDataURL('image/png');
-          const imgWidth = pageWidth - 10;
-          const imgHeight = (summaryCanvas.height * imgWidth) / summaryCanvas.width;
-          doc.addImage(summaryImg, 'PNG', 5, 5, imgWidth, Math.min(imgHeight, pageHeight - 10));
+          // 비율 유지
+          let sumW = pageWidth - 10;
+          let sumH = (summaryCanvas.height * sumW) / summaryCanvas.width;
+          if (sumH > pageHeight - 10) {
+            sumH = pageHeight - 10;
+            sumW = (summaryCanvas.width * sumH) / summaryCanvas.height;
+          }
+          doc.addImage(summaryImg, 'PNG', 5, 5, sumW, sumH);
 
           // 2. 각 이슈별 페이지 생성
           const totalPages = filteredIssues.length + 2;
@@ -1322,9 +1342,14 @@
             });
             
             const issueImg = issueCanvas.toDataURL('image/png');
-            const issueImgWidth = pageWidth - 10;
-            const issueImgHeight = (issueCanvas.height * issueImgWidth) / issueCanvas.width;
-            doc.addImage(issueImg, 'PNG', 5, 5, issueImgWidth, Math.min(issueImgHeight, pageHeight - 10));
+            // 비율 유지
+            let issW = pageWidth - 10;
+            let issH = (issueCanvas.height * issW) / issueCanvas.width;
+            if (issH > pageHeight - 10) {
+              issH = pageHeight - 10;
+              issW = (issueCanvas.width * issH) / issueCanvas.height;
+            }
+            doc.addImage(issueImg, 'PNG', 5, 5, issW, issH);
           }
 
           doc.save('Gemba_Walk_Report_' + printYear + '_' + printMonth + '.pdf');
@@ -1829,7 +1854,7 @@
                           
                           {/* 받는 사람 선택 */}
                           <div style={{ marginBottom: 12, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
-                            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 8 }}>📬 받는 사람:</div>
+                            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 8 }}>📬 받는 사람 - 부서 담당자:</div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                               {/* 부서 담당자 */}
                               {deptManagers.length === 0 && admins.length === 0 ? (
@@ -1844,14 +1869,12 @@
                                       padding: '6px 12px', 
                                       background: selectedManagersForDept.includes(mgr.email) ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255,255,255,0.1)', 
                                       borderRadius: 20, 
-                                      cursor: selectedCCForDept.includes(mgr.email) ? 'not-allowed' : 'pointer',
-                                      fontSize: 12,
-                                      opacity: selectedCCForDept.includes(mgr.email) ? 0.5 : 1
+                                      cursor: 'pointer',
+                                      fontSize: 12
                                     }}>
                                       <input 
                                         type="checkbox" 
                                         checked={selectedManagersForDept.includes(mgr.email)}
-                                        disabled={selectedCCForDept.includes(mgr.email)}
                                         onChange={(e) => {
                                           if (e.target.checked) {
                                             setRemindSelectedManagers({...remindSelectedManagers, [dept]: [...selectedManagersForDept, mgr.email]});
@@ -1864,75 +1887,19 @@
                                       {mgr.name} ({mgr.email})
                                     </label>
                                   ))}
-                                  {/* 관리자 목록 */}
-                                  {admins.map(admin => (
-                                    <label key={admin.email + '_to'} style={{ 
-                                      display: 'flex', 
-                                      alignItems: 'center', 
-                                      gap: 6, 
-                                      padding: '6px 12px', 
-                                      background: selectedManagersForDept.includes(admin.email) ? 'rgba(234, 179, 8, 0.3)' : 'rgba(234, 179, 8, 0.1)', 
-                                      borderRadius: 20, 
-                                      cursor: selectedCCForDept.includes(admin.email) ? 'not-allowed' : 'pointer',
-                                      fontSize: 12,
-                                      opacity: selectedCCForDept.includes(admin.email) ? 0.5 : 1,
-                                      border: '1px solid rgba(234, 179, 8, 0.3)'
-                                    }}>
-                                      <input 
-                                        type="checkbox" 
-                                        checked={selectedManagersForDept.includes(admin.email)}
-                                        disabled={selectedCCForDept.includes(admin.email)}
-                                        onChange={(e) => {
-                                          if (e.target.checked) {
-                                            setRemindSelectedManagers({...remindSelectedManagers, [dept]: [...selectedManagersForDept, admin.email]});
-                                          } else {
-                                            setRemindSelectedManagers({...remindSelectedManagers, [dept]: selectedManagersForDept.filter(em => em !== admin.email)});
-                                          }
-                                        }}
-                                        style={{ width: 14, height: 14, accentColor: '#eab308' }}
-                                      />
-                                      👑 {admin.name} ({admin.email})
-                                    </label>
-                                  ))}
+                                  {deptManagers.length === 0 && (
+                                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>등록된 부서 담당자가 없습니다.</span>
+                                  )}
                                 </>
                               )}
                             </div>
                           </div>
                           
-                          {/* CC 선택 */}
+                          {/* CC 선택 - 관리자만 */}
                           <div style={{ padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
-                            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 8 }}>📋 CC (참조):</div>
+                            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 8 }}>📋 CC (참조) - 👑 관리자:</div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                              {/* 부서 담당자 */}
-                              {deptManagers.map(mgr => (
-                                <label key={mgr.email + '_cc'} style={{ 
-                                  display: 'flex', 
-                                  alignItems: 'center', 
-                                  gap: 6, 
-                                  padding: '6px 12px', 
-                                  background: selectedCCForDept.includes(mgr.email) ? 'rgba(234, 179, 8, 0.3)' : 'rgba(255,255,255,0.1)', 
-                                  borderRadius: 20, 
-                                  cursor: selectedManagersForDept.includes(mgr.email) ? 'not-allowed' : 'pointer',
-                                  fontSize: 12,
-                                  opacity: selectedManagersForDept.includes(mgr.email) ? 0.5 : 1
-                                }}>
-                                  <input 
-                                    type="checkbox" 
-                                    checked={selectedCCForDept.includes(mgr.email)}
-                                    disabled={selectedManagersForDept.includes(mgr.email)}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        setRemindSelectedCC({...remindSelectedCC, [dept]: [...selectedCCForDept, mgr.email]});
-                                      } else {
-                                        setRemindSelectedCC({...remindSelectedCC, [dept]: selectedCCForDept.filter(em => em !== mgr.email)});
-                                      }
-                                    }}
-                                    style={{ width: 14, height: 14, accentColor: '#eab308' }}
-                                  />
-                                  {mgr.name} ({mgr.email})
-                                </label>
-                              ))}
-                              {/* 관리자 목록 */}
+                              {/* 관리자 목록만 */}
                               {admins.map(admin => (
                                 <label key={admin.email + '_cc'} style={{ 
                                   display: 'flex', 
@@ -1941,15 +1908,13 @@
                                   padding: '6px 12px', 
                                   background: selectedCCForDept.includes(admin.email) ? 'rgba(234, 179, 8, 0.3)' : 'rgba(234, 179, 8, 0.1)', 
                                   borderRadius: 20, 
-                                  cursor: selectedManagersForDept.includes(admin.email) ? 'not-allowed' : 'pointer',
+                                  cursor: 'pointer',
                                   fontSize: 12,
-                                  opacity: selectedManagersForDept.includes(admin.email) ? 0.5 : 1,
                                   border: '1px solid rgba(234, 179, 8, 0.3)'
                                 }}>
                                   <input 
                                     type="checkbox" 
                                     checked={selectedCCForDept.includes(admin.email)}
-                                    disabled={selectedManagersForDept.includes(admin.email)}
                                     onChange={(e) => {
                                       if (e.target.checked) {
                                         setRemindSelectedCC({...remindSelectedCC, [dept]: [...selectedCCForDept, admin.email]});
@@ -1962,8 +1927,8 @@
                                   👑 {admin.name} ({admin.email})
                                 </label>
                               ))}
-                              {deptManagers.length === 0 && admins.length === 0 && (
-                                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>등록된 담당자가 없습니다.</span>
+                              {admins.length === 0 && (
+                                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>등록된 관리자가 없습니다.</span>
                               )}
                             </div>
                           </div>
@@ -2428,7 +2393,7 @@
               <div style={{ background: 'white', borderRadius: 8, padding: 30, color: '#333' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <h1 style={{ color: '#1e3a5f', fontSize: 24, fontWeight: 800, marginBottom: 20 }}>EHS & Lean Gemba Walk Status</h1>
-                  <table style={{ borderCollapse: 'collapse', fontSize: 11 }}>
+                  <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
                     <tbody>
                       <tr>
                         <td style={{ border: '1px solid #333', padding: '4px 8px', textAlign: 'center' }}><span style={{ display: 'inline-block', width: 16, height: 16, borderRadius: '50%', background: '#00ff00' }}></span></td>
@@ -2447,19 +2412,19 @@
                 </div>
                 
                 {/* EHS Gemba Audit status 테이블 */}
-                <h3 style={{ fontSize: 18, margin: '16px 0 8px 0', fontWeight: 700 }}>EHS Gemba Audit status</h3>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, marginBottom: 24 }}>
+                <h3 style={{ fontSize: 20, margin: '16px 0 8px 0', fontWeight: 700 }}>EHS Gemba Audit status</h3>
+                <table style={{ borderCollapse: 'collapse', fontSize: 11, marginBottom: 24 }}>
                   <thead>
                     <tr>
                       <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333', width: 50 }}>Month</th>
                       <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333', width: 70 }}>Finding Total</th>
                       <th colSpan={2} style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #333' }}>Corrective Action</th>
-                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333', width: 70 }}>Close Ratio</th>
-                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333' }}>Detail (Open issues)</th>
+                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333', width: 80 }}>Close Ratio</th>
+                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333', width: 280 }}>Detail (Open issues)</th>
                     </tr>
                     <tr>
-                      <th style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #333', width: 55 }}>Close #</th>
-                      <th style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #333', width: 55 }}>Open #</th>
+                      <th style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #333', width: 70 }}>Close #</th>
+                      <th style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #333', width: 70 }}>Open #</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2471,9 +2436,9 @@
                       return (
                         <tr key={month}>
                           <td style={{ border: '1px solid #333', padding: '6px 8px', fontWeight: 500, textAlign: 'center' }}>{month}</td>
-                          <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center' }}>{stats.total || ''}</td>
-                          <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center' }}>{stats.closed || ''}</td>
-                          <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center' }}>{stats.open || ''}</td>
+                          <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{stats.total || ''}</td>
+                          <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{stats.closed || ''}</td>
+                          <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{stats.open || ''}</td>
                           <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700, background: ratioBg, color: ratioFontColor }}>{stats.total > 0 ? `${stats.closeRate}%` : ''}</td>
                           <td style={{ border: '1px solid #333', padding: '4px 8px' }}>
                             {isAdminMode ? (
@@ -2513,15 +2478,15 @@
                 </table>
 
                 {/* Open status 테이블 */}
-                <h3 style={{ fontSize: 18, margin: '20px 0 8px 0', fontWeight: 700, color: '#000' }}>
+                <h3 style={{ fontSize: 20, margin: '20px 0 8px 0', fontWeight: 700, color: '#000' }}>
                   Open status for {reportMonth === 'All' ? `${reportYear} All` : `${reportMonth} ${reportYear}`}
                 </h3>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <table style={{ borderCollapse: 'collapse', fontSize: 11 }}>
                   <thead>
                     <tr>
-                      <th style={{ background: '#fef9c3', padding: '8px 6px', border: '1px solid #333', width: 80 }}></th>
+                      <th style={{ background: '#fef9c3', padding: '8px 6px', border: '1px solid #333', width: 70 }}></th>
                       {departments.map(dept => (
-                        <th key={dept.name} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333', fontSize: 10 }}>{dept.name}</th>
+                        <th key={dept.name} style={{ background: '#be185d', color: 'white', padding: '8px 12px', border: '1px solid #333', fontSize: 10 }}>{dept.name}</th>
                       ))}
                       <th style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333' }}>All</th>
                     </tr>
@@ -2535,31 +2500,37 @@
                         if (reportMonth === 'All') return d.year === reportYear;
                         return d.year === reportYear && d.month === monthIndex;
                       });
+                      const allHasOfi = filteredIssues.length > 0;
                       return (
                         <>
                           <tr>
                             <td style={{ background: '#fef9c3', border: '1px solid #333', padding: '6px 8px', fontWeight: 600 }}># of OFI</td>
                             {departments.map(dept => {
                               const count = filteredIssues.filter(i => i.department === dept.name).length;
-                              return <td key={dept.name} style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center' }}>{count}</td>;
+                              const cellBg = count > 0 ? '#cceeff' : 'transparent';
+                              return <td key={dept.name} style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700, background: cellBg }}>{count}</td>;
                             })}
-                            <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{filteredIssues.length}</td>
+                            <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700, background: allHasOfi ? '#cceeff' : 'transparent' }}>{filteredIssues.length}</td>
                           </tr>
                           <tr>
                             <td style={{ background: '#fef9c3', border: '1px solid #333', padding: '6px 8px', fontWeight: 600 }}>Open</td>
                             {departments.map(dept => {
+                              const total = filteredIssues.filter(i => i.department === dept.name).length;
                               const count = filteredIssues.filter(i => i.department === dept.name && i.status !== 'Complete').length;
-                              return <td key={dept.name} style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center' }}>{count}</td>;
+                              const cellBg = total > 0 ? '#cceeff' : 'transparent';
+                              return <td key={dept.name} style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700, background: cellBg }}>{count}</td>;
                             })}
-                            <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{filteredIssues.filter(i => i.status !== 'Complete').length}</td>
+                            <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700, background: allHasOfi ? '#cceeff' : 'transparent' }}>{filteredIssues.filter(i => i.status !== 'Complete').length}</td>
                           </tr>
                           <tr>
                             <td style={{ background: '#fef9c3', border: '1px solid #333', padding: '6px 8px', fontWeight: 600 }}>Closed</td>
                             {departments.map(dept => {
+                              const total = filteredIssues.filter(i => i.department === dept.name).length;
                               const count = filteredIssues.filter(i => i.department === dept.name && i.status === 'Complete').length;
-                              return <td key={dept.name} style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center' }}>{count}</td>;
+                              const cellBg = total > 0 ? '#cceeff' : 'transparent';
+                              return <td key={dept.name} style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700, background: cellBg }}>{count}</td>;
                             })}
-                            <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{filteredIssues.filter(i => i.status === 'Complete').length}</td>
+                            <td style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700, background: allHasOfi ? '#cceeff' : 'transparent' }}>{filteredIssues.filter(i => i.status === 'Complete').length}</td>
                           </tr>
                           <tr>
                             <td style={{ background: '#fef9c3', border: '1px solid #333', padding: '6px 8px', fontWeight: 600 }}>Close Rate</td>
@@ -2568,7 +2539,7 @@
                               const closed = filteredIssues.filter(i => i.department === dept.name && i.status === 'Complete').length;
                               const rate = total > 0 ? Math.round(closed / total * 100) : 0;
                               const bg = total === 0 ? 'transparent' : rate === 100 ? '#00ff00' : '#ffff00';
-                              return <td key={dept.name} style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 600, background: bg }}>{rate}%</td>;
+                              return <td key={dept.name} style={{ border: '1px solid #333', padding: '6px 8px', textAlign: 'center', fontWeight: 700, background: bg }}>{rate}%</td>;
                             })}
                             {(() => {
                               const total = filteredIssues.length;
@@ -3134,13 +3105,57 @@
               onMouseLeave={handleResizeEnd}
             >
               {/* 상단 툴바 */}
-              <div style={{ position: 'sticky', top: 0, background: 'linear-gradient(135deg, #1e1e2f, #2d2d44)', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', zIndex: 10 }}>
+              <div style={{ position: 'sticky', top: 0, background: 'linear-gradient(135deg, #1e1e2f, #2d2d44)', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', zIndex: 10, flexWrap: 'wrap', gap: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'white' }}>📋 PDF 미리보기</h2>
                   <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>{printYear}년 {printMonth} | 총 {previewIssues.length + 2} 페이지</span>
                 </div>
+                
+                {/* 스타일 설정 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'rgba(255,255,255,0.08)', padding: '8px 16px', borderRadius: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>🎨 제목색:</span>
+                    {['#1e6bb8', '#10b981', '#dc2626', '#7c3aed', '#000000'].map(c => (
+                      <button key={c} onClick={() => setPdfTitleColor(c)} style={{
+                        width: 22, height: 22, borderRadius: '50%', border: pdfTitleColor === c ? '3px solid white' : '2px solid rgba(255,255,255,0.3)',
+                        background: c, cursor: 'pointer', padding: 0
+                      }} />
+                    ))}
+                  </div>
+                  
+                  <span style={{ color: 'rgba(255,255,255,0.3)' }}>|</span>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>📊 헤더색:</span>
+                    {['#be185d', '#1e6bb8', '#059669', '#7c3aed', '#374151'].map(c => (
+                      <button key={c} onClick={() => setPdfHeaderBg(c)} style={{
+                        width: 22, height: 22, borderRadius: 4, border: pdfHeaderBg === c ? '3px solid white' : '2px solid rgba(255,255,255,0.3)',
+                        background: c, cursor: 'pointer', padding: 0
+                      }} />
+                    ))}
+                  </div>
+                  
+                  <span style={{ color: 'rgba(255,255,255,0.3)' }}>|</span>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>📏 글씨:</span>
+                    {[
+                      { scale: 0.85, label: '작게' },
+                      { scale: 1, label: '보통' },
+                      { scale: 1.15, label: '크게' },
+                      { scale: 1.3, label: '매우 크게' }
+                    ].map(s => (
+                      <button key={s.scale} onClick={() => setPdfFontScale(s.scale)} style={{
+                        padding: '4px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: 11,
+                        background: pdfFontScale === s.scale ? '#3b82f6' : 'rgba(255,255,255,0.15)',
+                        color: pdfFontScale === s.scale ? 'white' : 'rgba(255,255,255,0.8)'
+                      }}>{s.label}</button>
+                    ))}
+                  </div>
+                </div>
+                
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 12, color: '#fbbf24', background: 'rgba(251,191,36,0.2)', padding: '4px 12px', borderRadius: 4 }}>💡 ↔가로 ↕세로 ↘동시 핸들로 이미지 크기 조절</span>
+                  <span style={{ fontSize: 12, color: '#fbbf24', background: 'rgba(251,191,36,0.2)', padding: '4px 12px', borderRadius: 4 }}>💡 ↔↕↘ 이미지 크기조절</span>
                   <button style={styles.btnSecondary} onClick={() => { setShowPreview(false); setPreviewIssues([]); }}>닫기</button>
                   <button style={styles.btnPrimary} onClick={() => { setShowPreview(false); downloadReport(); }}>PDF 다운로드</button>
                 </div>
@@ -3153,17 +3168,17 @@
                 <div style={{ background: 'white', width: 1100, borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.4)', overflow: 'hidden' }}>
                   <div style={{ textAlign: 'center', padding: 10, background: '#f0f0f0', color: '#6b7280', fontSize: 12, fontWeight: 600 }}>페이지 1 / {previewIssues.length + 2}</div>
                   <div style={{ width: 1100, height: 760, padding: '50px 60px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box', color: '#000' }}>
-                    <h1 style={{ color: '#1e6bb8', fontSize: 42, fontWeight: 700, margin: 0, paddingBottom: 16, borderBottom: '3px solid #999' }}>Gemba Walk terms</h1>
+                    <h1 style={{ color: pdfTitleColor, fontSize: 42 * pdfFontScale, fontWeight: 700, margin: 0, paddingBottom: 16, borderBottom: '3px solid #999' }}>Gemba Walk terms</h1>
                     <div style={{ margin: '50px 0 0 30px' }}>
-                      <p style={{ fontSize: 42, fontWeight: 700, margin: '0 0 50px 0' }}>
-                        <span style={{ color: '#1e6bb8', fontSize: 42 }}>➤</span> Audit Date : {auditDate ? (() => { const dp = safeParseDate(auditDate); const mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return mn[dp.month] + ' ' + dp.day + 'th ' + dp.year; })() : ''}
+                      <p style={{ fontSize: 42 * pdfFontScale, fontWeight: 700, margin: '0 0 50px 0' }}>
+                        <span style={{ color: pdfTitleColor, fontSize: 42 * pdfFontScale }}>➤</span> Audit Date : {auditDate ? (() => { const dp = safeParseDate(auditDate); const mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return mn[dp.month] + ' ' + dp.day + 'th ' + dp.year; })() : ''}
                       </p>
-                      <div style={{ fontSize: 42, fontWeight: 700, margin: 0 }}>
-                        <span style={{ color: '#1e6bb8', fontSize: 42 }}>➤</span> Auditor : {auditorName} – {auditorTitle}<br/>
-                        <span style={{ visibility: 'hidden' }}><span style={{ color: '#1e6bb8', fontSize: 42 }}>➤</span> Auditor : </span>Inhee Park - EHS Analyst
+                      <div style={{ fontSize: 42 * pdfFontScale, fontWeight: 700, margin: 0 }}>
+                        <span style={{ color: pdfTitleColor, fontSize: 42 * pdfFontScale }}>➤</span> Auditor : {auditorName} – {auditorTitle}<br/>
+                        <span style={{ visibility: 'hidden' }}><span style={{ color: pdfTitleColor, fontSize: 42 * pdfFontScale }}>➤</span> Auditor : </span>Inhee Park - EHS Analyst
                       </div>
-                      <p style={{ fontSize: 42, fontWeight: 700, margin: '50px 0 0 0' }}>
-                        <span style={{ color: '#1e6bb8', fontSize: 42 }}>➤</span> Other conditions : Integrated EHS & 5S+
+                      <p style={{ fontSize: 42 * pdfFontScale, fontWeight: 700, margin: '50px 0 0 0' }}>
+                        <span style={{ color: pdfTitleColor, fontSize: 42 * pdfFontScale }}>➤</span> Other conditions : Integrated EHS & 5S+
                       </p>
                     </div>
                   </div>
@@ -3214,8 +3229,8 @@
                     return (
                       <div style={{ padding: '30px 40px', fontFamily: 'Arial, sans-serif', color: '#000' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <h1 style={{ color: '#1e3a5f', fontSize: 32, fontWeight: 800, marginBottom: 25 }}>EHS & Lean Gemba Walk Status</h1>
-                          <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
+                          <h1 style={{ color: pdfTitleColor, fontSize: 32 * pdfFontScale, fontWeight: 800, marginBottom: 25 }}>EHS & Lean Gemba Walk Status</h1>
+                          <table style={{ borderCollapse: 'collapse', fontSize: 13 * pdfFontScale }}>
                             <tbody>
                               <tr><td style={{ border: '1px solid #333', padding: '6px 10px', textAlign: 'center' }}><span style={{ display: 'inline-block', width: 20, height: 20, borderRadius: '50%', background: '#00ff00' }}></span></td><td style={{ border: '1px solid #333', padding: '6px 10px' }}>Completed</td></tr>
                               <tr><td style={{ border: '1px solid #333', padding: '6px 10px', textAlign: 'center' }}><span style={{ display: 'inline-block', width: 20, height: 20, borderRadius: '50%', background: '#ffff00' }}></span></td><td style={{ border: '1px solid #333', padding: '6px 10px' }}>Delay(within90)</td></tr>
@@ -3223,19 +3238,19 @@
                             </tbody>
                           </table>
                         </div>
-                        <h3 style={{ fontSize: 20, margin: '20px 0 10px 0', fontWeight: 700 }}>EHS Gemba Audit status</h3>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                        <h3 style={{ fontSize: 22 * pdfFontScale, margin: '20px 0 10px 0', fontWeight: 700 }}>EHS Gemba Audit status</h3>
+                        <table style={{ borderCollapse: 'collapse', fontSize: 14 * pdfFontScale }}>
                           <thead>
                             <tr>
-                              <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '12px 8px', border: '1px solid #333', width: 70 }}>Month</th>
-                              <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '12px 8px', border: '1px solid #333', width: 100 }}>Finding Total</th>
-                              <th colSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px', border: '1px solid #333' }}>Corrective Action</th>
-                              <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '12px 8px', border: '1px solid #333', width: 100 }}>Close Ratio</th>
-                              <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '12px 8px', border: '1px solid #333' }}>Detail (Open issues)</th>
+                              <th rowSpan={2} style={{ background: pdfHeaderBg, color: 'white', padding: '8px 6px', border: '1px solid #333', width: 50 }}>Month</th>
+                              <th rowSpan={2} style={{ background: pdfHeaderBg, color: 'white', padding: '8px 6px', border: '1px solid #333', width: 70 }}>Finding Total</th>
+                              <th colSpan={2} style={{ background: pdfHeaderBg, color: 'white', padding: '8px', border: '1px solid #333' }}>Corrective Action</th>
+                              <th rowSpan={2} style={{ background: pdfHeaderBg, color: 'white', padding: '8px 6px', border: '1px solid #333', width: 80 }}>Close Ratio</th>
+                              <th rowSpan={2} style={{ background: pdfHeaderBg, color: 'white', padding: '8px 6px', border: '1px solid #333', width: 280 }}>Detail (Open issues)</th>
                             </tr>
                             <tr>
-                              <th style={{ background: '#be185d', color: 'white', padding: '8px', border: '1px solid #333', width: 80 }}>Close #</th>
-                              <th style={{ background: '#be185d', color: 'white', padding: '8px', border: '1px solid #333', width: 80 }}>Open #</th>
+                              <th style={{ background: pdfHeaderBg, color: 'white', padding: '8px', border: '1px solid #333', width: 70 }}>Close #</th>
+                              <th style={{ background: pdfHeaderBg, color: 'white', padding: '8px', border: '1px solid #333', width: 70 }}>Open #</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -3243,54 +3258,56 @@
                               const stats = getMonthStatsPreview(i);
                               return (
                                 <tr key={m}>
-                                  <td style={{ border: '1px solid #333', padding: '10px 8px', fontWeight: 600, textAlign: 'center' }}>{m}</td>
-                                  <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center' }}>{stats.total || ''}</td>
-                                  <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center' }}>{stats.closed || ''}</td>
-                                  <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center' }}>{stats.open || ''}</td>
-                                  <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center', background: stats.ratioColor || 'transparent', color: stats.ratioColor === '#ff0000' ? 'white' : '#000' }}>{stats.ratio}</td>
-                                  <td style={{ border: '1px solid #333', padding: '10px 8px', fontSize: 12 }}></td>
+                                  <td style={{ border: '1px solid #333', padding: '6px', fontWeight: 600, textAlign: 'center' }}>{m}</td>
+                                  <td style={{ border: '1px solid #333', padding: '6px', textAlign: 'center', fontWeight: 700 }}>{stats.total || ''}</td>
+                                  <td style={{ border: '1px solid #333', padding: '6px', textAlign: 'center', fontWeight: 700 }}>{stats.closed || ''}</td>
+                                  <td style={{ border: '1px solid #333', padding: '6px', textAlign: 'center', fontWeight: 700 }}>{stats.open || ''}</td>
+                                  <td style={{ border: '1px solid #333', padding: '6px', textAlign: 'center', fontWeight: 700, background: stats.ratioColor || 'transparent', color: stats.ratioColor === '#ff0000' ? 'white' : '#000' }}>{stats.ratio}</td>
+                                  <td style={{ border: '1px solid #333', padding: '6px', fontSize: 12 }}></td>
                                 </tr>
                               );
                             })}
                             <tr style={{ background: '#fef9c3' }}>
-                              <td style={{ border: '1px solid #333', padding: '10px 8px', fontWeight: 700, color: '#dc2626', textAlign: 'center' }}>Total</td>
-                              <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center', fontWeight: 700 }}>{yearTotal || ''}</td>
-                              <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center', fontWeight: 700 }}>{yearClosed || ''}</td>
-                              <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center', fontWeight: 700 }}>{yearOpen || ''}</td>
-                              <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center' }}></td>
-                              <td style={{ border: '1px solid #333', padding: '10px 8px' }}></td>
+                              <td style={{ border: '1px solid #333', padding: '6px', fontWeight: 700, color: '#dc2626', textAlign: 'center' }}>Total</td>
+                              <td style={{ border: '1px solid #333', padding: '6px', textAlign: 'center', fontWeight: 700 }}>{yearTotal || ''}</td>
+                              <td style={{ border: '1px solid #333', padding: '6px', textAlign: 'center', fontWeight: 700 }}>{yearClosed || ''}</td>
+                              <td style={{ border: '1px solid #333', padding: '6px', textAlign: 'center', fontWeight: 700 }}>{yearOpen || ''}</td>
+                              <td style={{ border: '1px solid #333', padding: '6px', textAlign: 'center' }}></td>
+                              <td style={{ border: '1px solid #333', padding: '6px' }}></td>
                             </tr>
                           </tbody>
                         </table>
                         
-                        <h3 style={{ fontSize: 20, margin: '25px 0 10px 0', fontWeight: 700, color: '#000' }}>Open status for {printMonth === 'All' ? printYear + ' All' : printMonth + ' ' + printYear}</h3>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                        <h3 style={{ fontSize: 22 * pdfFontScale, margin: '25px 0 10px 0', fontWeight: 700, color: '#000' }}>Open status for {printMonth === 'All' ? printYear + ' All' : printMonth + ' ' + printYear}</h3>
+                        <table style={{ borderCollapse: 'collapse', fontSize: 14 * pdfFontScale }}>
                           <thead>
                             <tr>
-                              <th style={{ background: '#fef9c3', padding: '12px 8px', border: '1px solid #333', width: 80 }}></th>
-                              {departments.map(d => <th key={d.name} style={{ background: '#be185d', color: 'white', padding: '12px 8px', border: '1px solid #333' }}>{d.name}</th>)}
-                              <th style={{ background: '#be185d', color: 'white', padding: '12px 8px', border: '1px solid #333' }}>All</th>
+                              <th style={{ background: '#fef9c3', padding: '8px 6px', border: '1px solid #333', width: 70 }}></th>
+                              {departments.map(d => <th key={d.name} style={{ background: pdfHeaderBg, color: 'white', padding: '8px 12px', border: '1px solid #333' }}>{d.name}</th>)}
+                              <th style={{ background: pdfHeaderBg, color: 'white', padding: '8px 12px', border: '1px solid #333' }}>All</th>
                             </tr>
                           </thead>
                           <tbody>
                             {['# of OFI', 'Open', 'Closed', 'Close Rate'].map(label => {
                               return (
                                 <tr key={label}>
-                                  <td style={{ background: '#fef9c3', border: '1px solid #333', padding: '10px 8px', fontWeight: 600 }}>{label}</td>
+                                  <td style={{ background: '#fef9c3', border: '1px solid #333', padding: '6px', fontWeight: 600 }}>{label}</td>
                                   {departments.map(dept => {
                                     const deptIssues = filteredForDept.filter(i => i.department === dept.name);
                                     const total = deptIssues.length;
                                     const closed = deptIssues.filter(i => i.status === 'Complete').length;
                                     const open = total - closed;
                                     const rate = total > 0 ? Math.round((closed/total)*100) + '%' : '0%';
-                                    const rateBg = label === 'Close Rate' ? (total === 0 ? '' : (closed === total ? '#00ff00' : '#ffff00')) : '';
+                                    const cellBg = label === 'Close Rate' 
+                                      ? (total === 0 ? '' : (closed === total ? '#00ff00' : '#ffff00'))
+                                      : (total > 0 ? '#cceeff' : '');
                                     const val = label === '# of OFI' ? total : label === 'Open' ? open : label === 'Closed' ? closed : rate;
-                                    return <td key={dept.name} style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center', background: rateBg }}>{val}</td>;
+                                    return <td key={dept.name} style={{ border: '1px solid #333', padding: '6px 12px', textAlign: 'center', fontWeight: 700, background: cellBg }}>{val}</td>;
                                   })}
                                   {(() => {
                                     const val = label === '# of OFI' ? allOfi : label === 'Open' ? allOpen2 : label === 'Closed' ? allClosed2 : allRate;
-                                    const bg = label === 'Close Rate' ? allRateBg : '';
-                                    return <td style={{ border: '1px solid #333', padding: '10px 8px', textAlign: 'center', fontWeight: 700, background: bg }}>{val}</td>;
+                                    const bg = label === 'Close Rate' ? allRateBg : (allOfi > 0 ? '#cceeff' : '');
+                                    return <td style={{ border: '1px solid #333', padding: '6px 12px', textAlign: 'center', fontWeight: 700, background: bg }}>{val}</td>;
                                   })()}
                                 </tr>
                               );
@@ -3366,9 +3383,9 @@
                       </div>
                       
                       <div style={{ padding: '30px 40px', fontFamily: 'Arial, sans-serif', color: '#000' }}>
-                        <h1 style={{ color: '#1e3a5f', fontSize: 32, fontWeight: 800, margin: '0 0 25px 0' }}>Safety / 5S+</h1>
+                        <h1 style={{ color: pdfTitleColor, fontSize: 32 * pdfFontScale, fontWeight: 800, margin: '0 0 25px 0' }}>Safety / 5S+</h1>
                         
-                        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 25, fontSize: 15, tableLayout: 'fixed' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 25, fontSize: 15 * pdfFontScale, tableLayout: 'fixed' }}>
                           <tbody>
                             <tr>
                               <td style={{ padding: '12px 18px', width: '15%', fontWeight: 700, border: '1px solid #333' }}>Finding#</td>
@@ -3382,8 +3399,8 @@
                         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                           <thead>
                             <tr>
-                              <th style={{ background: '#ff0000', color: '#000', padding: 16, width: '50%', fontSize: 18, fontWeight: 600, border: '1px solid #333' }}>Before</th>
-                              <th style={{ background: '#00ff00', color: '#000', padding: 16, width: '50%', fontSize: 18, fontWeight: 600, border: '1px solid #333' }}>After</th>
+                              <th style={{ background: '#ff0000', color: '#000', padding: 16, width: '50%', fontSize: 18 * pdfFontScale, fontWeight: 600, border: '1px solid #333' }}>Before</th>
+                              <th style={{ background: '#00ff00', color: '#000', padding: 16, width: '50%', fontSize: 18 * pdfFontScale, fontWeight: 600, border: '1px solid #333' }}>After</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -3400,8 +3417,8 @@
                               </td>
                             </tr>
                             <tr>
-                              <td style={{ border: '1px solid #333', padding: '18px 22px', verticalAlign: 'top', height: 120, fontSize: 15, lineHeight: 1.7 }}>{issue.description || ''}</td>
-                              <td style={{ border: '1px solid #333', padding: '18px 22px', verticalAlign: 'top', height: 120, fontSize: 15, lineHeight: 1.7 }}>{issue.actionContent || ''}</td>
+                              <td style={{ border: '1px solid #333', padding: '18px 22px', verticalAlign: 'top', height: 120, fontSize: 15 * pdfFontScale, lineHeight: 1.7 }}>{issue.description || ''}</td>
+                              <td style={{ border: '1px solid #333', padding: '18px 22px', verticalAlign: 'top', height: 120, fontSize: 15 * pdfFontScale, lineHeight: 1.7 }}>{issue.actionContent || ''}</td>
                             </tr>
                           </tbody>
                         </table>
@@ -3438,8 +3455,17 @@
               allShapes.forEach(s => {
                 ctx.strokeStyle = s.color;
                 ctx.lineWidth = s.lineWidth || 3;
-                ctx.setLineDash([]);
-                if (s.tool === 'circle') {
+                ctx.setLineDash(s.dashed ? [s.lineWidth * 3, s.lineWidth * 2] : []);
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                if (s.tool === 'pen' && s.points && s.points.length > 1) {
+                  ctx.beginPath();
+                  ctx.moveTo(s.points[0].x, s.points[0].y);
+                  for (let i = 1; i < s.points.length; i++) {
+                    ctx.lineTo(s.points[i].x, s.points[i].y);
+                  }
+                  ctx.stroke();
+                } else if (s.tool === 'circle') {
                   const cx = (s.x1 + s.x2) / 2;
                   const cy = (s.y1 + s.y2) / 2;
                   const rx = Math.abs(s.x2 - s.x1) / 2;
@@ -3484,6 +3510,7 @@
                     <>
                       <span style={{ color: 'white', fontSize: 14, fontWeight: 600, marginRight: 8 }}>🖊️ 주석 도구</span>
                       {[
+                        { id: 'pen', icon: '✏️', label: '실선' },
                         { id: 'circle', icon: '⭕', label: '원형' },
                         { id: 'rect', icon: '⬜', label: '네모' },
                         { id: 'arrow', icon: '➡️', label: '화살표' }
@@ -3521,6 +3548,20 @@
                           <div style={{ width: 18, height: t.w, background: annotLineWidth === t.w ? 'white' : 'rgba(255,255,255,0.7)', borderRadius: t.w / 2 }} />
                         </button>
                       ))}
+                      
+                      <span style={{ color: 'rgba(255,255,255,0.5)', margin: '0 4px' }}>|</span>
+                      
+                      {/* 실선/점선 토글 */}
+                      <button onClick={() => setAnnotDashed(false)} title="실선" style={{
+                        padding: '6px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12,
+                        background: !annotDashed ? '#3b82f6' : 'rgba(255,255,255,0.15)',
+                        color: !annotDashed ? 'white' : 'rgba(255,255,255,0.8)'
+                      }}>━━</button>
+                      <button onClick={() => setAnnotDashed(true)} title="점선" style={{
+                        padding: '6px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12,
+                        background: annotDashed ? '#3b82f6' : 'rgba(255,255,255,0.15)',
+                        color: annotDashed ? 'white' : 'rgba(255,255,255,0.8)'
+                      }}>┅┅</button>
                       
                       <span style={{ color: 'rgba(255,255,255,0.5)', margin: '0 4px' }}>|</span>
                       
@@ -3612,22 +3653,41 @@
                         onMouseDown={(e) => {
                           if (!annotTool) return;
                           const pos = getPos(e);
-                          setAnnotDrawing({ x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y, tool: annotTool, color: annotColor, lineWidth: annotLineWidth });
+                          if (annotTool === 'pen') {
+                            setAnnotDrawing({ tool: 'pen', color: annotColor, lineWidth: annotLineWidth, dashed: annotDashed, points: [pos] });
+                          } else {
+                            setAnnotDrawing({ x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y, tool: annotTool, color: annotColor, lineWidth: annotLineWidth, dashed: annotDashed });
+                          }
                         }}
                         onMouseMove={(e) => {
                           if (!annotDrawing) return;
                           const pos = getPos(e);
-                          const cur = { ...annotDrawing, x2: pos.x, y2: pos.y };
+                          let cur;
+                          if (annotDrawing.tool === 'pen') {
+                            cur = { ...annotDrawing, points: [...annotDrawing.points, pos] };
+                          } else {
+                            cur = { ...annotDrawing, x2: pos.x, y2: pos.y };
+                          }
                           setAnnotDrawing(cur);
                           drawCanvas(annotShapes, cur);
                         }}
                         onMouseUp={(e) => {
                           if (!annotDrawing) return;
                           const pos = getPos(e);
-                          const final = { ...annotDrawing, x2: pos.x, y2: pos.y };
-                          const dx = Math.abs(final.x2 - final.x1);
-                          const dy = Math.abs(final.y2 - final.y1);
-                          if (dx > 5 || dy > 5) {
+                          let final;
+                          let isValid = false;
+                          
+                          if (annotDrawing.tool === 'pen') {
+                            final = { ...annotDrawing, points: [...annotDrawing.points, pos] };
+                            isValid = final.points.length > 2;
+                          } else {
+                            final = { ...annotDrawing, x2: pos.x, y2: pos.y };
+                            const dx = Math.abs(final.x2 - final.x1);
+                            const dy = Math.abs(final.y2 - final.y1);
+                            isValid = dx > 5 || dy > 5;
+                          }
+                          
+                          if (isValid) {
                             const newShapes = [...annotShapes, final];
                             setAnnotShapes(newShapes);
                             drawCanvas(newShapes, null);
