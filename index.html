@@ -1098,7 +1098,7 @@
             </div>
             
             <h3 style="font-size: ${22 * pdfFontScale}px; margin: 15px 0 8px 0; font-weight: 700;">EHS Gemba Audit status</h3>
-            <table style="border-collapse: collapse; font-size: ${13 * pdfFontScale}px; margin-bottom: 20px;">
+            <table style="width: 100%; border-collapse: collapse; font-size: ${13 * pdfFontScale}px; margin-bottom: 20px;">
               <thead>
                 <tr>
                   <th rowspan="2" style="background: ${pdfHeaderBg}; color: white; padding: 8px 6px; border: 1px solid #333; width: 50px;">Month</th>
@@ -1132,10 +1132,10 @@
             </table>
 
             <h3 style="font-size: ${22 * pdfFontScale}px; margin: 20px 0 8px 0; color: #000; font-weight: 700;">Open status for ${printMonth === 'All' ? printYear + ' All' : printMonth + ' ' + printYear}</h3>
-            <table style="border-collapse: collapse; font-size: ${13 * pdfFontScale}px;">
+            <table style="width: 100%; border-collapse: collapse; font-size: ${13 * pdfFontScale}px;">
               <thead>
                 <tr>
-                  <th style="background: #fef9c3; padding: 8px 6px; border: 1px solid #333; width: 70px;"></th>
+                  <th style="background: #fef9c3; padding: 8px 6px; border: 1px solid #333; width: 90px;"></th>
                   ${departments.map(d => '<th style="background: ' + pdfHeaderBg + '; color: white; padding: 8px 12px; border: 1px solid #333;">' + d.name + '</th>').join('')}
                   <th style="background: ${pdfHeaderBg}; color: white; padding: 8px 12px; border: 1px solid #333;">All</th>
                 </tr>
@@ -1516,7 +1516,7 @@
             <>
               <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'flex-start', marginBottom: 24, marginTop: 24, gap: 16 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? 10 : 16, flex: 1 }}>
-                  <div style={styles.statCard}><div style={styles.statLabel}>전체</div><div style={styles.statValue('#a5b4fc')}>{issues.length}</div></div>
+                  <div style={styles.statCard}><div style={styles.statLabel}>ì "ì²´</div><div style={styles.statValue('#a5b4fc')}>{issues.length}</div></div>
                   <div style={styles.statCard}><div style={styles.statLabel}>Ongoing</div><div style={styles.statValue('#f59e0b')}>{issues.filter(i => i.status === 'Ongoing').length}</div></div>
                   <div style={styles.statCard}><div style={styles.statLabel}>Under Review</div><div style={styles.statValue('#6366f1')}>{issues.filter(i => i.status === 'Under Review').length}</div></div>
                   <div style={styles.statCard}><div style={styles.statLabel}>Complete</div><div style={styles.statValue('#10b981')}>{issues.filter(i => i.status === 'Complete').length}</div></div>
@@ -1542,21 +1542,21 @@
                       <th style={{...styles.th, width: 90}}>
                         <div>주관</div>
                         <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={mainFilters.supervisor} onChange={e => setMainFilters({...mainFilters, supervisor: e.target.value})}>
-                          <option value="">전체</option>
+                          <option value="">ì "ì²´</option>
                           {[...new Set(issues.map(i => i.supervisor).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       </th>
                       <th style={{...styles.th, width: 90}}>
                         <div>부서</div>
                         <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={mainFilters.department} onChange={e => setMainFilters({...mainFilters, department: e.target.value})}>
-                          <option value="">전체</option>
+                          <option value="">ì "ì²´</option>
                           {[...new Set(issues.map(i => i.department).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       </th>
                       <th style={{...styles.th, width: 90}}>
                         <div>담당자</div>
                         <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={mainFilters.manager} onChange={e => setMainFilters({...mainFilters, manager: e.target.value})}>
-                          <option value="">전체</option>
+                          <option value="">ì "ì²´</option>
                           {[...new Set(issues.map(i => i.manager).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       </th>
@@ -1567,7 +1567,7 @@
                       <th style={{...styles.th, width: 130}}>
                         <div>상태</div>
                         <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={mainFilters.status} onChange={e => setMainFilters({...mainFilters, status: e.target.value})}>
-                          <option value="">전체</option>
+                          <option value="">ì "ì²´</option>
                           <option value="Ongoing">Ongoing</option>
                           <option value="Under Review">Under Review</option>
                           <option value="Complete">Complete</option>
@@ -2065,7 +2065,7 @@
                     return (
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? 10 : 16, marginBottom: 24 }}>
                         <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: 12, padding: isMobile ? '12px 14px' : '16px 20px', textAlign: 'center' }}>
-                          <div style={{ fontSize: isMobile ? 11 : 13, color: 'rgba(255,255,255,0.6)', marginBottom: isMobile ? 4 : 6 }}>전체</div>
+                          <div style={{ fontSize: isMobile ? 11 : 13, color: 'rgba(255,255,255,0.6)', marginBottom: isMobile ? 4 : 6 }}>ì "ì²´</div>
                           <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: 'white' }}>{deptIssues.length}</div>
                         </div>
                         <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: 12, padding: isMobile ? '12px 14px' : '16px 20px', textAlign: 'center' }}>
@@ -2139,7 +2139,7 @@
                               </span>
                             </div>
                             
-                            {/* 내용 */}
+                            {/* ë'´ìš© */}
                             <div style={{ fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>{issue.description}</div>
                             
                             {/* 지적사진 */}
@@ -2196,7 +2196,7 @@
                                   disabled={!canReport}
                                   onClick={() => openReportModal(issue.id)}
                                 >
-                                  보고
+                                  ë³´ê³ 
                                 </button>
                               )}
                             </div>
@@ -2216,14 +2216,14 @@
                           <th style={{...styles.th, width: 100}}>
                             <div>주관</div>
                             <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={actionFilters.supervisor} onChange={e => setActionFilters({...actionFilters, supervisor: e.target.value})}>
-                              <option value="">전체</option>
+                              <option value="">ì "ì²´</option>
                               {[...new Set(issues.filter(i => i.department === selectedDeptForAction).map(i => i.supervisor).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                             </select>
                           </th>
                           <th style={{...styles.th, width: 120}}>
                             <div>담당자</div>
                             <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={actionFilters.manager} onChange={e => setActionFilters({...actionFilters, manager: e.target.value})}>
-                              <option value="">전체</option>
+                              <option value="">ì "ì²´</option>
                               {[...new Set(issues.filter(i => i.department === selectedDeptForAction).map(i => i.manager).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                             </select>
                           </th>
@@ -2234,14 +2234,14 @@
                           <th style={{...styles.th, width: 120}}>
                             <div>상태</div>
                             <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={actionFilters.status} onChange={e => setActionFilters({...actionFilters, status: e.target.value})}>
-                              <option value="">전체</option>
+                              <option value="">ì "ì²´</option>
                               <option value="Ongoing">Ongoing</option>
                               <option value="Under Review">Under Review</option>
                               <option value="Complete">Complete</option>
                             </select>
                           </th>
                           <th style={{...styles.th, width: 100}}>Target Date</th>
-                          <th style={{...styles.th, width: 90}}>보고</th>
+                          <th style={{...styles.th, width: 90}}>ë³´ê³ </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2335,7 +2335,7 @@
                                       disabled={!canReport}
                                       onClick={() => openReportModal(issue.id)}
                                     >
-                                      보고
+                                      ë³´ê³ 
                                     </button>
                                   );
                                 }
@@ -2413,18 +2413,26 @@
                 
                 {/* EHS Gemba Audit status 테이블 */}
                 <h3 style={{ fontSize: 20, margin: '16px 0 8px 0', fontWeight: 700 }}>EHS Gemba Audit status</h3>
-                <table style={{ borderCollapse: 'collapse', fontSize: 11, marginBottom: 24 }}>
+                <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 11, marginBottom: 24 }}>
+                  <colgroup>
+                    <col style={{ width: '7%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '9%' }} />
+                    <col style={{ width: '9%' }} />
+                    <col style={{ width: '11%' }} />
+                    <col style={{ width: '54%' }} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333', width: 50 }}>Month</th>
-                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333', width: 70 }}>Finding Total</th>
+                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333' }}>Month</th>
+                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333' }}>Finding Total</th>
                       <th colSpan={2} style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #333' }}>Corrective Action</th>
-                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333', width: 80 }}>Close Ratio</th>
-                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333', width: 280 }}>Detail (Open issues)</th>
+                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333' }}>Close Ratio</th>
+                      <th rowSpan={2} style={{ background: '#be185d', color: 'white', padding: '8px 6px', border: '1px solid #333' }}>Detail (Open issues)</th>
                     </tr>
                     <tr>
-                      <th style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #333', width: 70 }}>Close #</th>
-                      <th style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #333', width: 70 }}>Open #</th>
+                      <th style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #333' }}>Close #</th>
+                      <th style={{ background: '#be185d', color: 'white', padding: '6px', border: '1px solid #333' }}>Open #</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2481,10 +2489,10 @@
                 <h3 style={{ fontSize: 20, margin: '20px 0 8px 0', fontWeight: 700, color: '#000' }}>
                   Open status for {reportMonth === 'All' ? `${reportYear} All` : `${reportMonth} ${reportYear}`}
                 </h3>
-                <table style={{ borderCollapse: 'collapse', fontSize: 11 }}>
+                <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 11 }}>
                   <thead>
                     <tr>
-                      <th style={{ background: '#fef9c3', padding: '8px 6px', border: '1px solid #333', width: 70 }}></th>
+                      <th style={{ background: '#fef9c3', padding: '8px 6px', border: '1px solid #333', width: '10%' }}></th>
                       {departments.map(dept => (
                         <th key={dept.name} style={{ background: '#be185d', color: 'white', padding: '8px 12px', border: '1px solid #333', fontSize: 10 }}>{dept.name}</th>
                       ))}
@@ -3239,7 +3247,7 @@
                           </table>
                         </div>
                         <h3 style={{ fontSize: 22 * pdfFontScale, margin: '20px 0 10px 0', fontWeight: 700 }}>EHS Gemba Audit status</h3>
-                        <table style={{ borderCollapse: 'collapse', fontSize: 14 * pdfFontScale }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 * pdfFontScale }}>
                           <thead>
                             <tr>
                               <th rowSpan={2} style={{ background: pdfHeaderBg, color: 'white', padding: '8px 6px', border: '1px solid #333', width: 50 }}>Month</th>
@@ -3279,10 +3287,10 @@
                         </table>
                         
                         <h3 style={{ fontSize: 22 * pdfFontScale, margin: '25px 0 10px 0', fontWeight: 700, color: '#000' }}>Open status for {printMonth === 'All' ? printYear + ' All' : printMonth + ' ' + printYear}</h3>
-                        <table style={{ borderCollapse: 'collapse', fontSize: 14 * pdfFontScale }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 * pdfFontScale }}>
                           <thead>
                             <tr>
-                              <th style={{ background: '#fef9c3', padding: '8px 6px', border: '1px solid #333', width: 70 }}></th>
+                              <th style={{ background: '#fef9c3', padding: '8px 6px', border: '1px solid #333', width: 90 }}></th>
                               {departments.map(d => <th key={d.name} style={{ background: pdfHeaderBg, color: 'white', padding: '8px 12px', border: '1px solid #333' }}>{d.name}</th>)}
                               <th style={{ background: pdfHeaderBg, color: 'white', padding: '8px 12px', border: '1px solid #333' }}>All</th>
                             </tr>
@@ -3561,7 +3569,7 @@
                         padding: '6px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12,
                         background: annotDashed ? '#3b82f6' : 'rgba(255,255,255,0.15)',
                         color: annotDashed ? 'white' : 'rgba(255,255,255,0.8)'
-                      }}>┅┅</button>
+                      }}>â"…â"…</button>
                       
                       <span style={{ color: 'rgba(255,255,255,0.5)', margin: '0 4px' }}>|</span>
                       
