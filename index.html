@@ -8,11 +8,12 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
     
     /* 모바일 반응형 */
     @media (max-width: 768px) {
@@ -255,38 +256,38 @@
       const [sendingEmail, setSendingEmail] = useState(false);
 
       const styles = {
-        container: { minHeight: '100vh', background: 'linear-gradient(135deg, #1e1e2f 0%, #0f0f1a 100%)', color: 'white', padding: isMobile ? 12 : 24 },
+        container: { minHeight: '100vh', background: '#F3F4F6', color: '#1F2937', padding: isMobile ? 12 : 24 },
         header: { marginBottom: isMobile ? 16 : 24 },
-        title: { fontSize: isMobile ? 20 : 28, fontWeight: 700, background: 'linear-gradient(90deg, #a5b4fc, #818cf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' },
-        tabBtn: (active) => ({ padding: isMobile ? '10px 12px' : '12px 24px', border: 'none', background: active ? 'rgba(99, 102, 241, 0.3)' : 'transparent', color: active ? '#a5b4fc' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: isMobile ? 12 : 14, fontWeight: 500, borderBottom: active ? '2px solid #6366f1' : '2px solid transparent', transition: 'all 0.2s' }),
-        statCard: { background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: isMobile ? 12 : 20, textAlign: 'center' },
-        statLabel: { fontSize: isMobile ? 11 : 13, color: 'rgba(255,255,255,0.6)', marginBottom: isMobile ? 4 : 8 },
+        title: { fontSize: isMobile ? 20 : 28, fontWeight: 700, color: '#0066FF' },
+        tabBtn: (active) => ({ padding: isMobile ? '10px 12px' : '12px 24px', border: 'none', background: active ? '#E6F0FF' : 'transparent', color: active ? '#0066FF' : '#6B7280', cursor: 'pointer', fontSize: isMobile ? 12 : 14, fontWeight: active ? 600 : 500, borderBottom: active ? '2px solid #0066FF' : '2px solid transparent', transition: 'all 0.2s' }),
+        statCard: { background: 'white', borderRadius: 12, padding: isMobile ? 12 : 20, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #E5E7EB' },
+        statLabel: { fontSize: isMobile ? 11 : 13, color: '#6B7280', marginBottom: isMobile ? 4 : 8 },
         statValue: (color) => ({ fontSize: isMobile ? 24 : 32, fontWeight: 700, color }),
-        btnPrimary: { padding: isMobile ? '8px 14px' : '10px 20px', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: 'none', borderRadius: 8, color: 'white', cursor: 'pointer', fontWeight: 500, fontSize: isMobile ? 12 : 14 },
-        btnSecondary: { padding: isMobile ? '8px 14px' : '10px 20px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, color: 'white', cursor: 'pointer', fontWeight: 500, fontSize: isMobile ? 12 : 14 },
+        btnPrimary: { padding: isMobile ? '8px 14px' : '10px 20px', background: 'linear-gradient(135deg, #0066FF, #0052CC)', border: 'none', borderRadius: 8, color: 'white', cursor: 'pointer', fontWeight: 600, fontSize: isMobile ? 12 : 14, boxShadow: '0 2px 8px rgba(0,102,255,0.25)' },
+        btnSecondary: { padding: isMobile ? '8px 14px' : '10px 20px', background: '#F3F4F6', border: '1px solid #D1D5DB', borderRadius: 8, color: '#374151', cursor: 'pointer', fontWeight: 500, fontSize: isMobile ? 12 : 14 },
         btnDanger: { padding: isMobile ? '8px 14px' : '10px 20px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', borderRadius: 8, color: 'white', cursor: 'pointer', fontWeight: 500, fontSize: isMobile ? 12 : 14 },
-        table: { width: '100%', borderCollapse: 'collapse', background: 'rgba(255,255,255,0.03)', borderRadius: 12, overflow: 'hidden' },
-        th: { padding: isMobile ? '10px 8px' : '14px 12px', textAlign: 'left', background: 'rgba(99, 102, 241, 0.2)', fontSize: isMobile ? 11 : 13, fontWeight: 600, color: '#a5b4fc', borderBottom: '1px solid rgba(255,255,255,0.1)', whiteSpace: 'nowrap' },
-        td: { padding: isMobile ? '10px 8px' : '12px', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: isMobile ? 11 : 13, verticalAlign: 'middle' },
-        inlineInput: { width: '100%', padding: isMobile ? '6px 8px' : '8px 10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: 'white', fontSize: isMobile ? 11 : 13 },
-        modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: isMobile ? 16 : 0 },
-        modalContent: { background: 'linear-gradient(135deg, #1e1e2f, #2d2d44)', padding: isMobile ? 20 : 32, borderRadius: 16, width: '95%', maxWidth: 500, maxHeight: '85vh', overflowY: 'auto' },
-        input: { width: '100%', padding: isMobile ? '10px 12px' : '12px 16px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, color: 'white', fontSize: isMobile ? 13 : 14, marginBottom: 16 },
-        textarea: { width: '100%', padding: isMobile ? '10px 12px' : '12px 16px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, color: 'white', fontSize: isMobile ? 13 : 14, marginBottom: 16, minHeight: isMobile ? 80 : 100, resize: 'vertical' },
-        settingsCard: { background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: isMobile ? 16 : 24 },
-        settingsInput: { padding: isMobile ? '8px 10px' : '10px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, color: 'white', fontSize: isMobile ? 12 : 14 },
+        table: { width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
+        th: { padding: isMobile ? '10px 8px' : '14px 12px', textAlign: 'left', background: '#E6F0FF', fontSize: isMobile ? 11 : 13, fontWeight: 600, color: '#0052CC', borderBottom: '1px solid #E5E7EB', whiteSpace: 'nowrap' },
+        td: { padding: isMobile ? '10px 8px' : '12px', borderBottom: '1px solid #F3F4F6', fontSize: isMobile ? 11 : 13, verticalAlign: 'middle', color: '#374151' },
+        inlineInput: { width: '100%', padding: isMobile ? '6px 8px' : '8px 10px', background: 'white', border: '1px solid #D1D5DB', borderRadius: 6, color: '#1F2937', fontSize: isMobile ? 11 : 13 },
+        modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: isMobile ? 16 : 0 },
+        modalContent: { background: 'white', padding: isMobile ? 20 : 32, borderRadius: 16, width: '95%', maxWidth: 500, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)', color: '#1F2937' },
+        input: { width: '100%', padding: isMobile ? '10px 12px' : '12px 16px', background: 'white', border: '1px solid #D1D5DB', borderRadius: 8, color: '#1F2937', fontSize: isMobile ? 13 : 14, marginBottom: 16 },
+        textarea: { width: '100%', padding: isMobile ? '10px 12px' : '12px 16px', background: 'white', border: '1px solid #D1D5DB', borderRadius: 8, color: '#1F2937', fontSize: isMobile ? 13 : 14, marginBottom: 16, minHeight: isMobile ? 80 : 100, resize: 'vertical' },
+        settingsCard: { background: 'white', borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: isMobile ? 16 : 24, boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #E5E7EB' },
+        settingsInput: { padding: isMobile ? '8px 10px' : '10px 14px', background: 'white', border: '1px solid #D1D5DB', borderRadius: 8, color: '#1F2937', fontSize: isMobile ? 12 : 14 },
         inputRow: { display: 'flex', gap: 12, marginBottom: 16, flexWrap: isMobile ? 'wrap' : 'nowrap' },
-        tag: { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'rgba(99, 102, 241, 0.2)', borderRadius: 20, fontSize: isMobile ? 11 : 13, margin: '4px' },
-        actionBar: { display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, padding: isMobile ? 12 : 16, background: 'rgba(99, 102, 241, 0.1)', borderRadius: 12, flexWrap: 'wrap' },
+        tag: { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: '#E6F0FF', borderRadius: 20, fontSize: isMobile ? 11 : 13, margin: '4px', color: '#0052CC' },
+        actionBar: { display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, padding: isMobile ? 12 : 16, background: '#E6F0FF', borderRadius: 12, flexWrap: 'wrap' },
         photoGrid: { display: 'flex', gap: 8, flexWrap: 'wrap' },
-        photoThumb: { width: isMobile ? 50 : 60, height: isMobile ? 50 : 60, objectFit: 'cover', borderRadius: 8, border: '2px solid rgba(255,255,255,0.2)', cursor: 'pointer', transition: 'transform 0.2s' },
+        photoThumb: { width: isMobile ? 50 : 60, height: isMobile ? 50 : 60, objectFit: 'cover', borderRadius: 8, border: '2px solid #E5E7EB', cursor: 'pointer', transition: 'transform 0.2s' },
         statusBadge: (status) => {
-          const colors = { 'Ongoing': '#f59e0b', 'Under Review': '#6366f1', 'Complete': '#10b981' };
-          return { padding: '4px 12px', borderRadius: 20, fontSize: isMobile ? 10 : 12, fontWeight: 500, background: `${colors[status]}20`, color: colors[status], border: `1px solid ${colors[status]}40` };
+          const colors = { 'Ongoing': '#f59e0b', 'Under Review': '#0066FF', 'Complete': '#10b981' };
+          return { padding: '4px 12px', borderRadius: 20, fontSize: isMobile ? 10 : 12, fontWeight: 500, background: `${colors[status]}15`, color: colors[status], border: `1px solid ${colors[status]}40` };
         },
-        deptCard: { background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: isMobile ? 16 : 20, cursor: 'pointer', transition: 'all 0.2s', border: '2px solid transparent' },
-        deptCardActive: { background: 'rgba(99, 102, 241, 0.2)', borderColor: '#6366f1' },
-        selectOption: { background: '#1e1e3f', color: 'white' }
+        deptCard: { background: 'white', borderRadius: 12, padding: isMobile ? 16 : 20, cursor: 'pointer', transition: 'all 0.2s', border: '2px solid #E5E7EB', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' },
+        deptCardActive: { background: '#E6F0FF', borderColor: '#0066FF' },
+        selectOption: { background: 'white', color: '#1F2937' }
       };
 
       const addIssue = async () => {
@@ -1458,7 +1459,7 @@
           <div style={{...styles.container, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 48, marginBottom: 20 }}>🔄</div>
-              <div style={{ fontSize: 18, color: '#a5b4fc' }}>데이터 로딩 중...</div>
+              <div style={{ fontSize: 18, color: '#0066FF' }}>데이터 로딩 중...</div>
             </div>
           </div>
         );
@@ -1469,9 +1470,9 @@
           {/* 저장/삭제/업로드 중 팝업 */}
           {isSaving && (
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ background: 'rgba(30,30,50,0.95)', padding: '30px 50px', borderRadius: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                <div style={{ width: 40, height: 40, border: '4px solid rgba(255,255,255,0.2)', borderTop: '4px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                <span style={{ fontSize: 16, color: 'white', fontWeight: 600 }}>{savingMessage || '처리 중...'}</span>
+              <div style={{ background: 'white', padding: '30px 50px', borderRadius: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.15)', border: '1px solid #E5E7EB' }}>
+                <div style={{ width: 40, height: 40, border: '4px solid #E5E7EB', borderTop: '4px solid #0066FF', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                <span style={{ fontSize: 16, color: '#374151', fontWeight: 600 }}>{savingMessage || '처리 중...'}</span>
               </div>
             </div>
           )}
@@ -1480,7 +1481,7 @@
             <h1 style={styles.title}>Gemba Walk</h1>
           </div>
 
-          <div style={{ marginTop: 24, borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 12 : 0 }}>
+          <div style={{ marginTop: 24, borderBottom: '1px solid #E5E7EB', display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 12 : 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: isMobile ? 4 : 0 }}>
               <button style={styles.tabBtn(activeTab === 'action')} onClick={() => { setActiveTab('action'); setSelectedDeptForAction(null); }}>{isMobile ? '🔧 조치' : '🔧 조치 입력'}</button>
               <button style={styles.tabBtn(activeTab === 'report')} onClick={() => setActiveTab('report')}>📊 보고서</button>
@@ -1491,7 +1492,7 @@
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8, justifyContent: isMobile ? 'flex-end' : 'flex-start' }}>
               {isAdminMode ? (
                 <button 
-                  style={{...styles.btnSecondary, padding: isMobile ? '6px 12px' : '8px 16px', fontSize: isMobile ? 11 : 12, background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)'}} 
+                  style={{...styles.btnSecondary, padding: isMobile ? '6px 12px' : '8px 16px', fontSize: isMobile ? 11 : 12, background: '#D1FAE5', color: '#059669', border: '1px solid #6EE7B7'}} 
                   onClick={() => { 
                     setIsAdminMode(false); 
                     if (activeTab === 'main' || activeTab === 'settings' || activeTab === 'remind') {
@@ -1503,7 +1504,7 @@
                 </button>
               ) : (
                 <button 
-                  style={{...styles.btnSecondary, padding: isMobile ? '6px 12px' : '8px 16px', fontSize: isMobile ? 11 : 12, background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.3)'}} 
+                  style={{...styles.btnSecondary, padding: isMobile ? '6px 12px' : '8px 16px', fontSize: isMobile ? 11 : 12, background: '#E6F0FF', border: '1px solid #CCE0FF'}} 
                   onClick={() => setShowAdminModal(true)}
                 >
                   🔐 관리자
@@ -1516,9 +1517,9 @@
             <>
               <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'flex-start', marginBottom: 24, marginTop: 24, gap: 16 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? 10 : 16, flex: 1 }}>
-                  <div style={styles.statCard}><div style={styles.statLabel}>ì "ì²´</div><div style={styles.statValue('#a5b4fc')}>{issues.length}</div></div>
+                  <div style={styles.statCard}><div style={styles.statLabel}>ì "ì²´</div><div style={styles.statValue('#0066FF')}>{issues.length}</div></div>
                   <div style={styles.statCard}><div style={styles.statLabel}>Ongoing</div><div style={styles.statValue('#f59e0b')}>{issues.filter(i => i.status === 'Ongoing').length}</div></div>
-                  <div style={styles.statCard}><div style={styles.statLabel}>Under Review</div><div style={styles.statValue('#6366f1')}>{issues.filter(i => i.status === 'Under Review').length}</div></div>
+                  <div style={styles.statCard}><div style={styles.statLabel}>Under Review</div><div style={styles.statValue('#0066FF')}>{issues.filter(i => i.status === 'Under Review').length}</div></div>
                   <div style={styles.statCard}><div style={styles.statLabel}>Complete</div><div style={styles.statValue('#10b981')}>{issues.filter(i => i.status === 'Complete').length}</div></div>
                 </div>
                 <button style={styles.btnPrimary} onClick={() => setShowModal(true)}>📷 사진 등록</button>
@@ -1526,7 +1527,7 @@
 
               {selectedIds.length > 0 && (
                 <div style={styles.actionBar}>
-                  <span style={{ color: '#a5b4fc', fontSize: 14 }}>{selectedIds.length}개 선택됨</span>
+                  <span style={{ color: '#0066FF', fontSize: 14 }}>{selectedIds.length}개 선택됨</span>
                   {selectedIds.length === 2 && <button style={{...styles.btnPrimary, padding: '8px 16px', fontSize: 13}} onClick={mergeIssues}>🔗 병합</button>}
                   <button style={{...styles.btnDanger, padding: '8px 16px', fontSize: 13}} onClick={deleteSelected}>🗑️ 삭제</button>
                   <button style={{...styles.btnSecondary, padding: '8px 16px', fontSize: 13}} onClick={() => setSelectedIds([])}>선택 해제</button>
@@ -1541,21 +1542,21 @@
                       <th style={{...styles.th, width: 100}}>일자</th>
                       <th style={{...styles.th, width: 90}}>
                         <div>주관</div>
-                        <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={mainFilters.supervisor} onChange={e => setMainFilters({...mainFilters, supervisor: e.target.value})}>
+                        <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 4 }} value={mainFilters.supervisor} onChange={e => setMainFilters({...mainFilters, supervisor: e.target.value})}>
                           <option value="">ì "ì²´</option>
                           {[...new Set(issues.map(i => i.supervisor).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       </th>
                       <th style={{...styles.th, width: 90}}>
                         <div>부서</div>
-                        <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={mainFilters.department} onChange={e => setMainFilters({...mainFilters, department: e.target.value})}>
+                        <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 4 }} value={mainFilters.department} onChange={e => setMainFilters({...mainFilters, department: e.target.value})}>
                           <option value="">ì "ì²´</option>
                           {[...new Set(issues.map(i => i.department).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       </th>
                       <th style={{...styles.th, width: 90}}>
                         <div>담당자</div>
-                        <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={mainFilters.manager} onChange={e => setMainFilters({...mainFilters, manager: e.target.value})}>
+                        <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 4 }} value={mainFilters.manager} onChange={e => setMainFilters({...mainFilters, manager: e.target.value})}>
                           <option value="">ì "ì²´</option>
                           {[...new Set(issues.map(i => i.manager).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
@@ -1566,7 +1567,7 @@
                       <th style={{...styles.th, width: 100}}>조치사진</th>
                       <th style={{...styles.th, width: 130}}>
                         <div>상태</div>
-                        <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={mainFilters.status} onChange={e => setMainFilters({...mainFilters, status: e.target.value})}>
+                        <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 4 }} value={mainFilters.status} onChange={e => setMainFilters({...mainFilters, status: e.target.value})}>
                           <option value="">ì "ì²´</option>
                           <option value="Ongoing">Ongoing</option>
                           <option value="Under Review">Under Review</option>
@@ -1588,11 +1589,11 @@
                         return true;
                       });
                       if (filtered.length === 0) {
-                        return <tr><td colSpan="13" style={{...styles.td, textAlign: 'center', padding: 60, color: 'rgba(255,255,255,0.4)'}}>
+                        return <tr><td colSpan="13" style={{...styles.td, textAlign: 'center', padding: 60, color: '#9CA3AF'}}>
                           {issues.length === 0 ? '등록된 이슈가 없습니다.' : '필터 조건에 맞는 이슈가 없습니다.'}
                           {(mainFilters.supervisor || mainFilters.department || mainFilters.manager || mainFilters.status) && (
                             <div style={{ marginTop: 12 }}>
-                              <button style={{ background: 'rgba(99,102,241,0.3)', border: 'none', color: '#a5b4fc', padding: '6px 16px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }} onClick={() => setMainFilters({ supervisor: '', department: '', manager: '', status: '' })}>🔄 필터 초기화</button>
+                              <button style={{ background: '#CCE0FF', border: 'none', color: '#0066FF', padding: '6px 16px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }} onClick={() => setMainFilters({ supervisor: '', department: '', manager: '', status: '' })}>🔄 필터 초기화</button>
                             </div>
                           )}
                         </td></tr>;
@@ -1611,9 +1612,9 @@
                       const isOverdue = targetDate && new Date(targetDate) < new Date() && issue.status !== 'Complete';
                       
                       return (
-                      <tr key={issue.id} style={{ background: selectedIds.includes(issue.id) ? 'rgba(99, 102, 241, 0.15)' : isOverdue ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+                      <tr key={issue.id} style={{ background: selectedIds.includes(issue.id) ? 'rgba(99, 102, 241, 0.15)' : isOverdue ? '#FEF2F2' : 'transparent' }}>
                         <td style={styles.td}>
-                          <input type="checkbox" checked={selectedIds.includes(issue.id)} onChange={() => toggleSelect(issue.id)} disabled={!selectedIds.includes(issue.id) && selectedIds.length >= 2} style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#6366f1' }} />
+                          <input type="checkbox" checked={selectedIds.includes(issue.id)} onChange={() => toggleSelect(issue.id)} disabled={!selectedIds.includes(issue.id) && selectedIds.length >= 2} style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#0066FF' }} />
                         </td>
                         <td style={styles.td}><input type="date" style={styles.inlineInput} value={formatDate(issue.date)} onChange={(e) => {
                           const newDateStr = e.target.value;
@@ -1649,7 +1650,7 @@
                           <div style={styles.photoGrid}>
                             {issue.issuePhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "issue", index: i})} />)}
                           </div>
-                          <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: 'rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                          <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: '#F3F4F6', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
                             📷 추가
                             <input type="file" accept="image/*" multiple onChange={(e) => handlePhotoUpload(issue.id, 'issuePhotos', e.target.files)} style={{ display: 'none' }} />
                           </label>
@@ -1659,7 +1660,7 @@
                           <div style={styles.photoGrid}>
                             {issue.actionPhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "action", index: i})} />)}
                           </div>
-                          <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: 'rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                          <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: '#F3F4F6', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
                             📷 추가
                             <input type="file" accept="image/*" multiple onChange={(e) => handlePhotoUpload(issue.id, 'actionPhotos', e.target.files)} style={{ display: 'none' }} />
                           </label>
@@ -1698,11 +1699,11 @@
               {/* 필터 활성 표시 */}
               {(mainFilters.supervisor || mainFilters.department || mainFilters.manager || mainFilters.status) && (
                 <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>🔍 필터 적용 중:</span>
-                  {mainFilters.supervisor && <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(99,102,241,0.2)', borderRadius: 12, color: '#a5b4fc' }}>주관: {mainFilters.supervisor}</span>}
-                  {mainFilters.department && <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(99,102,241,0.2)', borderRadius: 12, color: '#a5b4fc' }}>부서: {mainFilters.department}</span>}
-                  {mainFilters.manager && <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(99,102,241,0.2)', borderRadius: 12, color: '#a5b4fc' }}>담당자: {mainFilters.manager}</span>}
-                  {mainFilters.status && <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(99,102,241,0.2)', borderRadius: 12, color: '#a5b4fc' }}>상태: {mainFilters.status}</span>}
+                  <span style={{ fontSize: 12, color: '#9CA3AF' }}>🔍 필터 적용 중:</span>
+                  {mainFilters.supervisor && <span style={{ fontSize: 11, padding: '3px 10px', background: '#E6F0FF', borderRadius: 12, color: '#0052CC' }}>주관: {mainFilters.supervisor}</span>}
+                  {mainFilters.department && <span style={{ fontSize: 11, padding: '3px 10px', background: '#E6F0FF', borderRadius: 12, color: '#0052CC' }}>부서: {mainFilters.department}</span>}
+                  {mainFilters.manager && <span style={{ fontSize: 11, padding: '3px 10px', background: '#E6F0FF', borderRadius: 12, color: '#0052CC' }}>담당자: {mainFilters.manager}</span>}
+                  {mainFilters.status && <span style={{ fontSize: 11, padding: '3px 10px', background: '#E6F0FF', borderRadius: 12, color: '#0052CC' }}>상태: {mainFilters.status}</span>}
                   <button style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 12, padding: '2px 8px' }} onClick={() => setMainFilters({ supervisor: '', department: '', manager: '', status: '' })}>✕ 초기화</button>
                 </div>
               )}
@@ -1738,7 +1739,7 @@
                 
                 if (overdueIssues.length === 0) {
                   return (
-                    <div style={{ textAlign: 'center', padding: 60, color: 'rgba(255,255,255,0.4)' }}>
+                    <div style={{ textAlign: 'center', padding: 60, color: '#9CA3AF' }}>
                       Target Date가 초과된 항목이 없습니다. 🎉
                     </div>
                   );
@@ -1766,7 +1767,7 @@
                       
                       return (
                         <div key={dept} style={{ 
-                          background: 'rgba(239, 68, 68, 0.1)', 
+                          background: '#FEF2F2', 
                           borderRadius: 12, 
                           padding: isMobile ? 16 : 24, 
                           marginBottom: 20,
@@ -1786,7 +1787,7 @@
                                 {deptIssues.length}건 지연
                               </span>
                             </div>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#4B5563' }}>
                               <input 
                                 type="checkbox" 
                                 checked={selectedIssuesForDept.length === deptIssues.length && deptIssues.length > 0}
@@ -1833,7 +1834,7 @@
                                   />
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontSize: 13, marginBottom: 4 }}>{issue.description || '(내용 없음)'}</div>
-                                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
+                                    <div style={{ fontSize: 11, color: '#9CA3AF' }}>
                                       접수일: {formatDate(issue.date)} | Target: {targetDate} 
                                       <span style={{ color: '#ef4444', marginLeft: 8 }}>({daysPassed}일 경과)</span>
                                       {issue.manager && <span> | 담당: {issue.manager}</span>}
@@ -1853,12 +1854,12 @@
                           </div>
                           
                           {/* 받는 사람 선택 */}
-                          <div style={{ marginBottom: 12, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
-                            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 8 }}>📬 받는 사람 - 부서 담당자:</div>
+                          <div style={{ marginBottom: 12, padding: 12, background: '#F9FAFB', borderRadius: 8 }}>
+                            <div style={{ fontSize: 13, color: '#4B5563', marginBottom: 8 }}>📬 받는 사람 - 부서 담당자:</div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                               {/* 부서 담당자 */}
                               {deptManagers.length === 0 && admins.length === 0 ? (
-                                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>등록된 담당자가 없습니다. 설정에서 추가하세요.</span>
+                                <span style={{ fontSize: 12, color: '#9CA3AF' }}>등록된 담당자가 없습니다. 설정에서 추가하세요.</span>
                               ) : (
                                 <>
                                   {deptManagers.map(mgr => (
@@ -1867,7 +1868,7 @@
                                       alignItems: 'center', 
                                       gap: 6, 
                                       padding: '6px 12px', 
-                                      background: selectedManagersForDept.includes(mgr.email) ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255,255,255,0.1)', 
+                                      background: selectedManagersForDept.includes(mgr.email) ? '#CCE0FF' : '#F9FAFB', 
                                       borderRadius: 20, 
                                       cursor: 'pointer',
                                       fontSize: 12
@@ -1882,13 +1883,13 @@
                                             setRemindSelectedManagers({...remindSelectedManagers, [dept]: selectedManagersForDept.filter(em => em !== mgr.email)});
                                           }
                                         }}
-                                        style={{ width: 14, height: 14, accentColor: '#6366f1' }}
+                                        style={{ width: 14, height: 14, accentColor: '#0066FF' }}
                                       />
                                       {mgr.name} ({mgr.email})
                                     </label>
                                   ))}
                                   {deptManagers.length === 0 && (
-                                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>등록된 부서 담당자가 없습니다.</span>
+                                    <span style={{ fontSize: 12, color: '#9CA3AF' }}>등록된 부서 담당자가 없습니다.</span>
                                   )}
                                 </>
                               )}
@@ -1896,8 +1897,8 @@
                           </div>
                           
                           {/* CC 선택 - 관리자만 */}
-                          <div style={{ padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
-                            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 8 }}>📋 CC (참조) - 👑 관리자:</div>
+                          <div style={{ padding: 12, background: '#F9FAFB', borderRadius: 8 }}>
+                            <div style={{ fontSize: 13, color: '#4B5563', marginBottom: 8 }}>📋 CC (참조) - 👑 관리자:</div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                               {/* 관리자 목록만 */}
                               {admins.map(admin => (
@@ -1928,7 +1929,7 @@
                                 </label>
                               ))}
                               {admins.length === 0 && (
-                                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>등록된 관리자가 없습니다.</span>
+                                <span style={{ fontSize: 12, color: '#9CA3AF' }}>등록된 관리자가 없습니다.</span>
                               )}
                             </div>
                           </div>
@@ -1945,7 +1946,7 @@
                         fontSize: 16,
                         background: readyDepts.length > 0 
                           ? 'linear-gradient(135deg, #ef4444, #dc2626)' 
-                          : 'rgba(255,255,255,0.1)',
+                          : '#F3F4F6',
                         cursor: readyDepts.length > 0 ? 'pointer' : 'not-allowed',
                         opacity: readyDepts.length > 0 ? 1 : 0.5
                       }}
@@ -2018,7 +2019,7 @@
                     </button>
                     
                     {readyDepts.length === 0 && (
-                      <div style={{ marginTop: 12, fontSize: 12, color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
+                      <div style={{ marginTop: 12, fontSize: 12, color: '#9CA3AF', textAlign: 'center' }}>
                         * 각 부서에서 이슈와 받는 사람을 선택해주세요
                       </div>
                     )}
@@ -2032,7 +2033,7 @@
             <div style={{ marginTop: 24 }}>
               {!selectedDeptForAction ? (
                 <>
-                  <h3 style={{ marginBottom: 20, color: '#a5b4fc', fontSize: isMobile ? 16 : 18 }}>부서를 선택하세요</h3>
+                  <h3 style={{ marginBottom: 20, color: '#0066FF', fontSize: isMobile ? 16 : 18 }}>부서를 선택하세요</h3>
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(200px, 1fr))', gap: isMobile ? 10 : 16 }}>
                     {departments.map(dept => {
                       const deptIssues = issues.filter(i => i.department === dept.name);
@@ -2041,7 +2042,7 @@
                       return (
                         <div key={dept.name} style={{...styles.deptCard, padding: isMobile ? 14 : 20}} onClick={() => handleDeptClick(dept)}>
                           <div style={{ fontSize: isMobile ? 14 : 18, fontWeight: 600, marginBottom: isMobile ? 6 : 8 }}>{dept.name}</div>
-                          <div style={{ fontSize: isMobile ? 10 : 12, color: 'rgba(255,255,255,0.6)' }}>
+                          <div style={{ fontSize: isMobile ? 10 : 12, color: '#6B7280' }}>
                             {isMobile ? `${deptIssues.length}건 | 미:${ongoing} | 완:${complete}` : `전체: ${deptIssues.length}건 | 미조치: `}<span style={{color: '#f59e0b'}}>{!isMobile && ongoing}</span>{!isMobile && ` | 완료: `}<span style={{color: '#10b981'}}>{!isMobile && complete}</span>
                           </div>
                         </div>
@@ -2053,7 +2054,7 @@
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 16, marginBottom: 20, flexWrap: 'wrap' }}>
                     <button style={{...styles.btnSecondary, padding: isMobile ? '6px 12px' : '10px 20px', fontSize: isMobile ? 12 : 14}} onClick={() => { setSelectedDeptForAction(null); setActionFilters({ supervisor: '', manager: '', status: '' }); }}>← 부서</button>
-                    <h3 style={{ color: '#a5b4fc', fontSize: isMobile ? 14 : 18 }}>{selectedDeptForAction} - 조치 입력</h3>
+                    <h3 style={{ color: '#0066FF', fontSize: isMobile ? 14 : 18 }}>{selectedDeptForAction} - 조치 입력</h3>
                   </div>
                   
                   {/* 부서별 통계 카드 */}
@@ -2064,20 +2065,20 @@
                     const complete = deptIssues.filter(i => i.status === 'Complete').length;
                     return (
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? 10 : 16, marginBottom: 24 }}>
-                        <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: 12, padding: isMobile ? '12px 14px' : '16px 20px', textAlign: 'center' }}>
-                          <div style={{ fontSize: isMobile ? 11 : 13, color: 'rgba(255,255,255,0.6)', marginBottom: isMobile ? 4 : 6 }}>ì "ì²´</div>
+                        <div style={{ background: '#F0F6FF', border: '1px solid #CCE0FF', borderRadius: 12, padding: isMobile ? '12px 14px' : '16px 20px', textAlign: 'center' }}>
+                          <div style={{ fontSize: isMobile ? 11 : 13, color: '#6B7280', marginBottom: isMobile ? 4 : 6 }}>ì "ì²´</div>
                           <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: 'white' }}>{deptIssues.length}</div>
                         </div>
                         <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: 12, padding: isMobile ? '12px 14px' : '16px 20px', textAlign: 'center' }}>
-                          <div style={{ fontSize: isMobile ? 11 : 13, color: 'rgba(255,255,255,0.6)', marginBottom: isMobile ? 4 : 6 }}>Ongoing</div>
+                          <div style={{ fontSize: isMobile ? 11 : 13, color: '#6B7280', marginBottom: isMobile ? 4 : 6 }}>Ongoing</div>
                           <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: '#f59e0b' }}>{ongoing}</div>
                         </div>
-                        <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: 12, padding: isMobile ? '12px 14px' : '16px 20px', textAlign: 'center' }}>
-                          <div style={{ fontSize: isMobile ? 11 : 13, color: 'rgba(255,255,255,0.6)', marginBottom: isMobile ? 4 : 6 }}>Review</div>
-                          <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: '#6366f1' }}>{underReview}</div>
+                        <div style={{ background: '#F0F6FF', border: '1px solid #CCE0FF', borderRadius: 12, padding: isMobile ? '12px 14px' : '16px 20px', textAlign: 'center' }}>
+                          <div style={{ fontSize: isMobile ? 11 : 13, color: '#6B7280', marginBottom: isMobile ? 4 : 6 }}>Review</div>
+                          <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: '#0066FF' }}>{underReview}</div>
                         </div>
-                        <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: 12, padding: isMobile ? '12px 14px' : '16px 20px', textAlign: 'center' }}>
-                          <div style={{ fontSize: isMobile ? 11 : 13, color: 'rgba(255,255,255,0.6)', marginBottom: isMobile ? 4 : 6 }}>Complete</div>
+                        <div style={{ background: '#ECFDF5', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: 12, padding: isMobile ? '12px 14px' : '16px 20px', textAlign: 'center' }}>
+                          <div style={{ fontSize: isMobile ? 11 : 13, color: '#6B7280', marginBottom: isMobile ? 4 : 6 }}>Complete</div>
                           <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: '#10b981' }}>{complete}</div>
                         </div>
                       </div>
@@ -2089,11 +2090,11 @@
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       {/* 모바일 필터 */}
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <select style={{ flex: 1, minWidth: 80, padding: '6px 8px', fontSize: 11, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6 }} value={actionFilters.supervisor} onChange={e => setActionFilters({...actionFilters, supervisor: e.target.value})}>
+                        <select style={{ flex: 1, minWidth: 80, padding: '6px 8px', fontSize: 11, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 6 }} value={actionFilters.supervisor} onChange={e => setActionFilters({...actionFilters, supervisor: e.target.value})}>
                           <option value="">주관: 전체</option>
                           {[...new Set(issues.filter(i => i.department === selectedDeptForAction).map(i => i.supervisor).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
-                        <select style={{ flex: 1, minWidth: 80, padding: '6px 8px', fontSize: 11, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6 }} value={actionFilters.status} onChange={e => setActionFilters({...actionFilters, status: e.target.value})}>
+                        <select style={{ flex: 1, minWidth: 80, padding: '6px 8px', fontSize: 11, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 6 }} value={actionFilters.status} onChange={e => setActionFilters({...actionFilters, status: e.target.value})}>
                           <option value="">상태: 전체</option>
                           <option value="Ongoing">Ongoing</option>
                           <option value="Under Review">Under Review</option>
@@ -2112,7 +2113,7 @@
                           return true;
                         });
                         if (filtered.length === 0) {
-                          return <div style={{ textAlign: 'center', padding: 40, color: 'rgba(255,255,255,0.4)' }}>{deptIssues.length === 0 ? '해당 부서의 이슈가 없습니다.' : '필터 조건에 맞는 이슈가 없습니다.'}</div>;
+                          return <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>{deptIssues.length === 0 ? '해당 부서의 이슈가 없습니다.' : '필터 조건에 맞는 이슈가 없습니다.'}</div>;
                         }
                         return filtered.map(issue => {
                         const targetDate = issue.targetDate || (() => {
@@ -2128,12 +2129,12 @@
                         
                         return (
                           <div key={issue.id} style={{ 
-                            background: issue.status === 'Complete' ? 'rgba(16, 185, 129, 0.1)' : isOverdue ? 'rgba(239, 68, 68, 0.1)' : 'rgba(255,255,255,0.05)', 
-                            borderRadius: 12, padding: 16, border: '1px solid rgba(255,255,255,0.1)'
+                            background: issue.status === 'Complete' ? '#ECFDF5' : isOverdue ? '#FEF2F2' : 'white', 
+                            borderRadius: 12, padding: 16, border: '1px solid #E5E7EB'
                           }}>
                             {/* 상단: 일자, 상태, Target Date */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{formatDate(issue.date)} | {issue.supervisor}</div>
+                              <div style={{ fontSize: 12, color: '#6B7280' }}>{formatDate(issue.date)} | {issue.supervisor}</div>
                               <span style={{...styles.statusBadge(issue.status), padding: '4px 10px', fontSize: 10}}>
                                 {issue.status === 'Under Review' ? 'Review' : issue.status}
                               </span>
@@ -2145,7 +2146,7 @@
                             {/* 지적사진 */}
                             {issue.issuePhotos.length > 0 && (
                               <div style={{ marginBottom: 12 }}>
-                                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>지적사진</div>
+                                <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 6 }}>지적사진</div>
                                 <div style={styles.photoGrid}>
                                   {issue.issuePhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "issue", index: i})} />)}
                                 </div>
@@ -2154,7 +2155,7 @@
                             
                             {/* 담당자 선택 */}
                             <div style={{ marginBottom: 12 }}>
-                              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>담당자</div>
+                              <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 6 }}>담당자</div>
                               <select style={{...styles.inlineInput, width: '100%'}} value={issue.manager} onChange={(e) => updateIssueField(issue.id, 'manager', e.target.value)} disabled={issue.status === 'Complete'}>
                                 <option value="" style={styles.selectOption}>선택</option>
                                 {(managers[selectedDeptForAction] || []).map(m => <option key={m.name} value={m.name} style={styles.selectOption}>{m.name}</option>)}
@@ -2163,18 +2164,18 @@
                             
                             {/* 조치내용 */}
                             <div style={{ marginBottom: 12 }}>
-                              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>조치내용</div>
+                              <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 6 }}>조치내용</div>
                               <textarea style={{...styles.inlineInput, minHeight: 60, width: '100%'}} value={issue.actionContent} onChange={(e) => updateIssueField(issue.id, 'actionContent', e.target.value)} placeholder="조치 내용 입력" disabled={issue.status !== 'Ongoing'} />
                             </div>
                             
                             {/* 조치사진 */}
                             <div style={{ marginBottom: 12 }}>
-                              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>조치사진</div>
+                              <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 6 }}>조치사진</div>
                               <div style={styles.photoGrid}>
                                 {issue.actionPhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "action", index: i})} />)}
                               </div>
                               {issue.status === 'Ongoing' && (
-                                <label style={{ display: 'inline-block', marginTop: 8, padding: '6px 12px', background: 'rgba(255,255,255,0.1)', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>
+                                <label style={{ display: 'inline-block', marginTop: 8, padding: '6px 12px', background: '#F3F4F6', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>
                                   📷 사진 추가
                                   <input type="file" accept="image/*" multiple onChange={(e) => handlePhotoUpload(issue.id, 'actionPhotos', e.target.files)} style={{ display: 'none' }} />
                                 </label>
@@ -2182,14 +2183,14 @@
                             </div>
                             
                             {/* 하단: Target Date, 보고 버튼 */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                              <div style={{ fontSize: 11, color: isOverdue ? '#ef4444' : 'rgba(255,255,255,0.6)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTop: '1px solid #E5E7EB' }}>
+                              <div style={{ fontSize: 11, color: isOverdue ? '#ef4444' : '#6B7280' }}>
                                 Target: {targetDate ? targetDate.split('T')[0] : ''} {isOverdue && '⚠️ 지연'}
                               </div>
                               {issue.status === 'Complete' ? (
                                 <span style={{ padding: '6px 12px', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>✓ 완료</span>
                               ) : issue.status === 'Under Review' ? (
-                                <span style={{ padding: '6px 12px', background: 'rgba(99, 102, 241, 0.2)', color: '#818cf8', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>✓ 보고됨</span>
+                                <span style={{ padding: '6px 12px', background: '#E6F0FF', color: '#3B82F6', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>✓ 보고됨</span>
                               ) : (
                                 <button 
                                   style={{...styles.btnPrimary, padding: '8px 16px', fontSize: 12, opacity: canReport ? 1 : 0.5}}
@@ -2215,14 +2216,14 @@
                           <th style={{...styles.th, width: 100}}>일자</th>
                           <th style={{...styles.th, width: 100}}>
                             <div>주관</div>
-                            <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={actionFilters.supervisor} onChange={e => setActionFilters({...actionFilters, supervisor: e.target.value})}>
+                            <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 4 }} value={actionFilters.supervisor} onChange={e => setActionFilters({...actionFilters, supervisor: e.target.value})}>
                               <option value="">ì "ì²´</option>
                               {[...new Set(issues.filter(i => i.department === selectedDeptForAction).map(i => i.supervisor).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                             </select>
                           </th>
                           <th style={{...styles.th, width: 120}}>
                             <div>담당자</div>
-                            <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={actionFilters.manager} onChange={e => setActionFilters({...actionFilters, manager: e.target.value})}>
+                            <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 4 }} value={actionFilters.manager} onChange={e => setActionFilters({...actionFilters, manager: e.target.value})}>
                               <option value="">ì "ì²´</option>
                               {[...new Set(issues.filter(i => i.department === selectedDeptForAction).map(i => i.manager).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                             </select>
@@ -2233,7 +2234,7 @@
                           <th style={{...styles.th, width: 120}}>조치사진</th>
                           <th style={{...styles.th, width: 120}}>
                             <div>상태</div>
-                            <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4 }} value={actionFilters.status} onChange={e => setActionFilters({...actionFilters, status: e.target.value})}>
+                            <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 4 }} value={actionFilters.status} onChange={e => setActionFilters({...actionFilters, status: e.target.value})}>
                               <option value="">ì "ì²´</option>
                               <option value="Ongoing">Ongoing</option>
                               <option value="Under Review">Under Review</option>
@@ -2254,11 +2255,11 @@
                             return true;
                           });
                           if (filtered.length === 0) {
-                            return <tr><td colSpan="10" style={{...styles.td, textAlign: 'center', padding: 60, color: 'rgba(255,255,255,0.4)'}}>
+                            return <tr><td colSpan="10" style={{...styles.td, textAlign: 'center', padding: 60, color: '#9CA3AF'}}>
                               {deptIssues.length === 0 ? '해당 부서의 이슈가 없습니다.' : '필터 조건에 맞는 이슈가 없습니다.'}
                               {(actionFilters.supervisor || actionFilters.manager || actionFilters.status) && (
                                 <div style={{ marginTop: 12 }}>
-                                  <button style={{ background: 'rgba(99,102,241,0.3)', border: 'none', color: '#a5b4fc', padding: '6px 16px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }} onClick={() => setActionFilters({ supervisor: '', manager: '', status: '' })}>🔄 필터 초기화</button>
+                                  <button style={{ background: '#CCE0FF', border: 'none', color: '#0066FF', padding: '6px 16px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }} onClick={() => setActionFilters({ supervisor: '', manager: '', status: '' })}>🔄 필터 초기화</button>
                                 </div>
                               )}
                             </td></tr>;
@@ -2276,7 +2277,7 @@
                           const isOverdue = targetDate && new Date(targetDate) < new Date() && issue.status !== 'Complete';
                           
                           return (
-                          <tr key={issue.id} style={{ background: issue.status === 'Complete' ? 'rgba(16, 185, 129, 0.05)' : isOverdue ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+                          <tr key={issue.id} style={{ background: issue.status === 'Complete' ? 'rgba(16, 185, 129, 0.05)' : isOverdue ? '#FEF2F2' : 'transparent' }}>
                             <td style={styles.td}>{formatDate(issue.date)}</td>
                             <td style={styles.td}>{issue.supervisor}</td>
                             <td style={styles.td}>
@@ -2299,7 +2300,7 @@
                                 {issue.actionPhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "action", index: i})} />)}
                               </div>
                               {issue.status === 'Ongoing' && (
-                                <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: 'rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                                <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: '#F3F4F6', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
                                   📷 추가
                                   <input type="file" accept="image/*" multiple onChange={(e) => handlePhotoUpload(issue.id, 'actionPhotos', e.target.files)} style={{ display: 'none' }} />
                                 </label>
@@ -2320,7 +2321,7 @@
                                 if (issue.status === 'Complete') {
                                   return <span style={{ padding: '6px 10px', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderRadius: 6, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>✓ 완료</span>;
                                 } else if (issue.status === 'Under Review') {
-                                  return <span style={{ padding: '6px 10px', background: 'rgba(99, 102, 241, 0.2)', color: '#818cf8', borderRadius: 6, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>✓ 보고됨</span>;
+                                  return <span style={{ padding: '6px 10px', background: '#E6F0FF', color: '#3B82F6', borderRadius: 6, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>✓ 보고됨</span>;
                                 } else {
                                   return (
                                     <button 
@@ -2350,10 +2351,10 @@
                   {/* 필터 활성 표시 */}
                   {(actionFilters.supervisor || actionFilters.manager || actionFilters.status) && (
                     <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>🔍 필터 적용 중:</span>
-                      {actionFilters.supervisor && <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(99,102,241,0.2)', borderRadius: 12, color: '#a5b4fc' }}>주관: {actionFilters.supervisor}</span>}
-                      {actionFilters.manager && <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(99,102,241,0.2)', borderRadius: 12, color: '#a5b4fc' }}>담당자: {actionFilters.manager}</span>}
-                      {actionFilters.status && <span style={{ fontSize: 11, padding: '3px 10px', background: 'rgba(99,102,241,0.2)', borderRadius: 12, color: '#a5b4fc' }}>상태: {actionFilters.status}</span>}
+                      <span style={{ fontSize: 12, color: '#9CA3AF' }}>🔍 필터 적용 중:</span>
+                      {actionFilters.supervisor && <span style={{ fontSize: 11, padding: '3px 10px', background: '#E6F0FF', borderRadius: 12, color: '#0052CC' }}>주관: {actionFilters.supervisor}</span>}
+                      {actionFilters.manager && <span style={{ fontSize: 11, padding: '3px 10px', background: '#E6F0FF', borderRadius: 12, color: '#0052CC' }}>담당자: {actionFilters.manager}</span>}
+                      {actionFilters.status && <span style={{ fontSize: 11, padding: '3px 10px', background: '#E6F0FF', borderRadius: 12, color: '#0052CC' }}>상태: {actionFilters.status}</span>}
                       <button style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 12, padding: '2px 8px' }} onClick={() => setActionFilters({ supervisor: '', manager: '', status: '' })}>✕ 초기화</button>
                     </div>
                   )}
@@ -2570,7 +2571,7 @@
             <div style={{ maxWidth: 800, marginTop: 24 }}>
               {/* 엑셀 가져오기/내보내기 */}
               <div style={styles.settingsCard}>
-                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#a5b4fc' }}>📊 엑셀로 설정 관리</h3>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#0066FF' }}>📊 엑셀로 설정 관리</h3>
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                   <button style={{...styles.btnSecondary, display: 'flex', alignItems: 'center', gap: 6}} onClick={downloadTemplate}>
                     📥 템플릿 다운로드
@@ -2583,14 +2584,14 @@
                     <input type="file" accept=".xlsx,.xls" onChange={importFromExcel} style={{ display: 'none' }} />
                   </label>
                 </div>
-                <div style={{ marginTop: 12, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                <div style={{ marginTop: 12, fontSize: 12, color: '#9CA3AF' }}>
                   * 템플릿을 다운로드하여 양식에 맞게 작성 후 업로드하면 주관/부서/담당자를 한번에 등록할 수 있습니다.
                 </div>
               </div>
 
               {/* 주관 설정 */}
               <div style={styles.settingsCard}>
-                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#a5b4fc' }}>📌 주관 목록</h3>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#0066FF' }}>📌 주관 목록</h3>
                 <div style={styles.inputRow}>
                   <input type="text" placeholder="주관 이름 입력" value={newSupervisor} onChange={(e) => setNewSupervisor(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addSupervisor()} style={styles.settingsInput} />
                   <button style={styles.btnPrimary} onClick={addSupervisor}>추가</button>
@@ -2607,7 +2608,7 @@
 
               {/* 부서 설정 */}
               <div style={styles.settingsCard}>
-                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#a5b4fc' }}>🏢 부서 목록</h3>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#0066FF' }}>🏢 부서 목록</h3>
                 <div style={styles.inputRow}>
                   <input type="text" placeholder="부서 이름 입력" value={newDepartment} onChange={(e) => setNewDepartment(e.target.value)} style={{...styles.settingsInput, flex: 1}} />
                   <input type="text" placeholder="비밀번호" value={newDeptPassword} onChange={(e) => setNewDeptPassword(e.target.value)} style={{...styles.settingsInput, width: 100}} />
@@ -2617,7 +2618,7 @@
                   {departments.map(d => (
                     <span key={d.name} style={styles.tag}>
                       {d.name}
-                      <button onClick={() => openEditPasswordModal(d)} style={{ background: 'none', border: 'none', color: '#a5b4fc', cursor: 'pointer', fontSize: 12, padding: '0 4px' }}>수정</button>
+                      <button onClick={() => openEditPasswordModal(d)} style={{ background: 'none', border: 'none', color: '#0066FF', cursor: 'pointer', fontSize: 12, padding: '0 4px' }}>수정</button>
                       <button onClick={() => removeDepartment(d.name)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, padding: 0 }}>×</button>
                     </span>
                   ))}
@@ -2626,7 +2627,7 @@
 
               {/* 담당자 설정 */}
               <div style={styles.settingsCard}>
-                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#a5b4fc' }}>👤 담당자 목록</h3>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#0066FF' }}>👤 담당자 목록</h3>
                 <div style={styles.inputRow}>
                   <select value={selectedDeptForManager} onChange={(e) => setSelectedDeptForManager(e.target.value)} style={{...styles.settingsInput, width: 150}}>
                     <option value="" style={styles.selectOption}>부서 선택</option>
@@ -2638,12 +2639,12 @@
                 </div>
                 {departments.map(d => (
                   <div key={d.name} style={{ marginTop: 16 }}>
-                    <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>{d.name}</div>
+                    <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 8 }}>{d.name}</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       {(managers[d.name] || []).map(m => (
                         <span key={m.name} style={styles.tag}>
                           {m.name} {m.email && <span style={{ opacity: 0.6, fontSize: 11 }}>({m.email})</span>}
-                          <button onClick={() => openEditManagerModal(d.name, m)} style={{ background: 'none', border: 'none', color: '#a5b4fc', cursor: 'pointer', fontSize: 12, padding: '0 4px' }}>수정</button>
+                          <button onClick={() => openEditManagerModal(d.name, m)} style={{ background: 'none', border: 'none', color: '#0066FF', cursor: 'pointer', fontSize: 12, padding: '0 4px' }}>수정</button>
                           <button onClick={() => removeManager(d.name, m.name)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, padding: 0 }}>×</button>
                         </span>
                       ))}
@@ -2654,8 +2655,8 @@
               
               {/* 관리자 목록 설정 */}
               <div style={styles.settingsCard}>
-                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#a5b4fc' }}>👑 관리자 목록</h3>
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 12 }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#0066FF' }}>👑 관리자 목록</h3>
+                <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 12 }}>
                   * 관리자는 리마인드 메일 발송 시 모든 부서에서 수신자로 선택할 수 있습니다.
                 </div>
                 <div style={styles.inputRow}>
@@ -2671,7 +2672,7 @@
                     </span>
                   ))}
                   {admins.length === 0 && (
-                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>등록된 관리자가 없습니다.</span>
+                    <span style={{ fontSize: 12, color: '#9CA3AF' }}>등록된 관리자가 없습니다.</span>
                   )}
                 </div>
               </div>
@@ -2687,32 +2688,32 @@
                 {uploadProgress.show ? (
                   /* 업로드 진행 중 */
                   <div style={{ padding: '20px 0' }}>
-                    <div style={{ marginBottom: 16, textAlign: 'center', fontSize: 14, color: 'rgba(255,255,255,0.8)' }}>
+                    <div style={{ marginBottom: 16, textAlign: 'center', fontSize: 14, color: '#374151' }}>
                       업로드 중...
                     </div>
                     <div style={{ 
                       width: '100%', 
                       height: 24, 
-                      background: 'rgba(255,255,255,0.1)', 
+                      background: '#F3F4F6', 
                       borderRadius: 12, 
                       overflow: 'hidden'
                     }}>
                       <div style={{ 
                         width: `${uploadProgress.total > 0 ? (uploadProgress.uploaded / uploadProgress.total) * 100 : 0}%`, 
                         height: '100%', 
-                        background: 'linear-gradient(90deg, #6366f1, #a5b4fc)', 
+                        background: 'linear-gradient(90deg, #0066FF, #0066FF)', 
                         borderRadius: 12,
                         transition: 'width 0.3s ease'
                       }} />
                     </div>
-                    <div style={{ marginTop: 12, textAlign: 'center', fontSize: 20, fontWeight: 700, color: '#a5b4fc' }}>
+                    <div style={{ marginTop: 12, textAlign: 'center', fontSize: 20, fontWeight: 700, color: '#0066FF' }}>
                       {(uploadProgress.uploaded / 1024).toFixed(0)} KB / {(uploadProgress.total / 1024).toFixed(0)} KB
                     </div>
                   </div>
                 ) : (
                   /* 사진 선택 */
                   <>
-                    <p style={{ marginBottom: 16, color: 'rgba(255,255,255,0.7)', fontSize: 14 }}>
+                    <p style={{ marginBottom: 16, color: '#4B5563', fontSize: 14 }}>
                       사진을 선택하면 각 사진당 이슈가 자동 생성됩니다.
                     </p>
                     <label style={{ 
@@ -2721,15 +2722,15 @@
                       alignItems: 'center',
                       justifyContent: 'center',
                       padding: '40px 20px', 
-                      background: 'rgba(255,255,255,0.05)', 
-                      border: '2px dashed rgba(255,255,255,0.3)',
+                      background: '#F9FAFB', 
+                      border: '2px dashed #D1D5DB',
                       borderRadius: 12, 
                       cursor: 'pointer', 
                       fontSize: 14,
                       marginBottom: 16
                     }}>
                       <span style={{ fontSize: 48, marginBottom: 12 }}>📷</span>
-                      <span style={{ color: '#a5b4fc', fontWeight: 500 }}>사진 선택 (여러 장 가능)</span>
+                      <span style={{ color: '#0066FF', fontWeight: 500 }}>사진 선택 (여러 장 가능)</span>
                       <input 
                         type="file" 
                         accept="image/*" 
@@ -2807,7 +2808,7 @@
             <div style={styles.modalOverlay} onClick={() => setShowPasswordModal(false)}>
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
                 <h2 style={{ margin: '0 0 24px 0', fontSize: 20, fontWeight: 600 }}>🔐 비밀번호 입력</h2>
-                <p style={{ marginBottom: 16, color: 'rgba(255,255,255,0.7)' }}>{pendingDept?.name} 부서에 접근하려면 비밀번호를 입력하세요.</p>
+                <p style={{ marginBottom: 16, color: '#4B5563' }}>{pendingDept?.name} 부서에 접근하려면 비밀번호를 입력하세요.</p>
                 <input 
                   type="password" 
                   placeholder="비밀번호" 
@@ -2836,20 +2837,20 @@
             return (
               <div style={styles.modalOverlay} onClick={() => setReportModalIssueId(null)}>
                 <div style={{...styles.modalContent, maxWidth: 550, maxHeight: '85vh', overflow: 'auto'}} onClick={e => e.stopPropagation()}>
-                  <h2 style={{ margin: '0 0 8px 0', fontSize: 20, fontWeight: 600, color: '#a5b4fc' }}>📧 조치완료 보고 메일</h2>
-                  <p style={{ margin: '0 0 20px 0', fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>
+                  <h2 style={{ margin: '0 0 8px 0', fontSize: 20, fontWeight: 600, color: '#0066FF' }}>📧 조치완료 보고 메일</h2>
+                  <p style={{ margin: '0 0 20px 0', fontSize: 13, color: '#6B7280' }}>
                     [{issue.department}] {issue.description ? issue.description.substring(0, 50) : ''}...
                   </p>
 
                   {/* 수신자 선택 */}
                   <div style={{ marginBottom: 20 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: '#f0abfc', marginBottom: 10 }}>📬 수신자 (To) — 선택해주세요</div>
-                    <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 12 }}>
+                    <div style={{ background: '#F9FAFB', borderRadius: 8, padding: 12 }}>
                       {deptManagers.length === 0 ? (
-                        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>해당 부서에 등록된 담당자가 없습니다.</span>
+                        <span style={{ fontSize: 13, color: '#9CA3AF' }}>해당 부서에 등록된 담당자가 없습니다.</span>
                       ) : (
                         deptManagers.filter(m => m.email).map(m => (
-                          <label key={m.email} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', cursor: 'pointer', fontSize: 13, color: 'rgba(255,255,255,0.9)' }}>
+                          <label key={m.email} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', cursor: 'pointer', fontSize: 13, color: '#1F2937' }}>
                             <input 
                               type="checkbox" 
                               checked={reportRecipients.includes(m.email)}
@@ -2863,7 +2864,7 @@
                               style={{ width: 16, height: 16 }}
                             />
                             <span style={{ fontWeight: 600 }}>{m.name}</span>
-                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>({m.email})</span>
+                            <span style={{ color: '#9CA3AF', fontSize: 11 }}>({m.email})</span>
                           </label>
                         ))
                       )}
@@ -2876,15 +2877,15 @@
                   {/* CC - 관리자 강제 */}
                   <div style={{ marginBottom: 24 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: '#fbbf24', marginBottom: 10 }}>📋 참조 (CC) — 관리자 자동포함</div>
-                    <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 12 }}>
+                    <div style={{ background: '#F9FAFB', borderRadius: 8, padding: 12 }}>
                       {admins.filter(a => a.email).length === 0 ? (
-                        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>등록된 관리자가 없습니다.</span>
+                        <span style={{ fontSize: 13, color: '#9CA3AF' }}>등록된 관리자가 없습니다.</span>
                       ) : (
                         admins.filter(a => a.email).map(a => (
-                          <label key={a.email} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', fontSize: 13, color: 'rgba(255,255,255,0.9)' }}>
+                          <label key={a.email} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', fontSize: 13, color: '#1F2937' }}>
                             <input type="checkbox" checked={true} disabled style={{ width: 16, height: 16, opacity: 0.6 }} />
                             <span style={{ fontWeight: 600 }}>👑 {a.name}</span>
-                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>({a.email})</span>
+                            <span style={{ color: '#9CA3AF', fontSize: 11 }}>({a.email})</span>
                             <span style={{ fontSize: 10, color: '#fbbf24', marginLeft: 4 }}>해제불가</span>
                           </label>
                         ))
@@ -2908,7 +2909,7 @@
                         fontSize: 14,
                         background: reportRecipients.length > 0 
                           ? 'linear-gradient(135deg, #10b981, #059669)' 
-                          : 'rgba(255,255,255,0.1)',
+                          : '#F3F4F6',
                         opacity: reportRecipients.length > 0 ? 1 : 0.5
                       }}
                       disabled={reportRecipients.length === 0 || sendingReport}
@@ -2927,7 +2928,7 @@
             <div style={styles.modalOverlay} onClick={() => { setShowAdminModal(false); setAdminPassword(''); }}>
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
                 <h2 style={{ margin: '0 0 24px 0', fontSize: 20, fontWeight: 600 }}>🔐 관리자 모드</h2>
-                <p style={{ marginBottom: 16, color: 'rgba(255,255,255,0.7)' }}>관리자 비밀번호를 입력하세요.</p>
+                <p style={{ marginBottom: 16, color: '#4B5563' }}>관리자 비밀번호를 입력하세요.</p>
                 <input 
                   type="password" 
                   placeholder="관리자 비밀번호" 
@@ -2971,7 +2972,7 @@
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
                 <h2 style={{ margin: '0 0 24px 0', fontSize: 20, fontWeight: 600 }}>🏢 부서 정보 수정</h2>
                 <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>부서명</label>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: '#4B5563' }}>부서명</label>
                   <input 
                     type="text" 
                     placeholder="부서명" 
@@ -2981,7 +2982,7 @@
                   />
                 </div>
                 <div style={{ marginBottom: 20 }}>
-                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>비밀번호</label>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: '#4B5563' }}>비밀번호</label>
                   <input 
                     type="text" 
                     placeholder="비밀번호" 
@@ -3005,7 +3006,7 @@
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
                 <h2 style={{ margin: '0 0 24px 0', fontSize: 20, fontWeight: 600 }}>👤 담당자 정보 수정</h2>
                 <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>이름</label>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: '#4B5563' }}>이름</label>
                   <input 
                     type="text" 
                     placeholder="담당자 이름" 
@@ -3015,7 +3016,7 @@
                   />
                 </div>
                 <div style={{ marginBottom: 20 }}>
-                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>이메일</label>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: '#4B5563' }}>이메일</label>
                   <input 
                     type="email" 
                     placeholder="이메일" 
@@ -3039,7 +3040,7 @@
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
                 <h2 style={{ margin: '0 0 24px 0', fontSize: 20, fontWeight: 600 }}>📥 보고서 다운로드</h2>
                 <div style={{ marginBottom: 20 }}>
-                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>연도 선택</label>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: '#4B5563' }}>연도 선택</label>
                   <select 
                     value={printYear} 
                     onChange={(e) => setPrintYear(parseInt(e.target.value))}
@@ -3051,7 +3052,7 @@
                   </select>
                 </div>
                 <div style={{ marginBottom: 24 }}>
-                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>월 선택</label>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: '#4B5563' }}>월 선택</label>
                   <select 
                     value={printMonth} 
                     onChange={(e) => setPrintMonth(e.target.value)}
@@ -3063,10 +3064,10 @@
                     ))}
                   </select>
                 </div>
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 20, marginBottom: 20 }}>
+                <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 20, marginBottom: 20 }}>
                   <h3 style={{ margin: '0 0 16px 0', fontSize: 15, fontWeight: 600, color: '#93c5fd' }}>📄 표지 설정</h3>
                   <div style={{ marginBottom: 16 }}>
-                    <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>Audit Date</label>
+                    <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: '#4B5563' }}>Audit Date</label>
                     <input 
                       type="date" 
                       value={auditDate} 
@@ -3075,7 +3076,7 @@
                     />
                   </div>
                   <div style={{ marginBottom: 16 }}>
-                    <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>Auditor 이름</label>
+                    <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: '#4B5563' }}>Auditor 이름</label>
                     <input 
                       type="text" 
                       value={auditorName} 
@@ -3085,7 +3086,7 @@
                     />
                   </div>
                   <div style={{ marginBottom: 16 }}>
-                    <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>Auditor 직책</label>
+                    <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: '#4B5563' }}>Auditor 직책</label>
                     <input 
                       type="text" 
                       value={auditorTitle} 
@@ -3113,16 +3114,16 @@
               onMouseLeave={handleResizeEnd}
             >
               {/* 상단 툴바 */}
-              <div style={{ position: 'sticky', top: 0, background: 'linear-gradient(135deg, #1e1e2f, #2d2d44)', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', zIndex: 10, flexWrap: 'wrap', gap: 12 }}>
+              <div style={{ position: 'sticky', top: 0, background: '#1F2937', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #374151', zIndex: 10, flexWrap: 'wrap', gap: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'white' }}>📋 PDF 미리보기</h2>
-                  <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>{printYear}년 {printMonth} | 총 {previewIssues.length + 2} 페이지</span>
+                  <span style={{ fontSize: 13, color: '#6B7280' }}>{printYear}년 {printMonth} | 총 {previewIssues.length + 2} 페이지</span>
                 </div>
                 
                 {/* 스타일 설정 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'rgba(255,255,255,0.08)', padding: '8px 16px', borderRadius: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: '#F3F4F6', padding: '8px 16px', borderRadius: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>🎨 제목색:</span>
+                    <span style={{ fontSize: 12, color: '#4B5563' }}>🎨 제목색:</span>
                     {['#1e6bb8', '#10b981', '#dc2626', '#7c3aed', '#000000'].map(c => (
                       <button key={c} onClick={() => setPdfTitleColor(c)} style={{
                         width: 22, height: 22, borderRadius: '50%', border: pdfTitleColor === c ? '3px solid white' : '2px solid rgba(255,255,255,0.3)',
@@ -3134,7 +3135,7 @@
                   <span style={{ color: 'rgba(255,255,255,0.3)' }}>|</span>
                   
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>📊 헤더색:</span>
+                    <span style={{ fontSize: 12, color: '#4B5563' }}>📊 헤더색:</span>
                     {['#be185d', '#1e6bb8', '#059669', '#7c3aed', '#374151'].map(c => (
                       <button key={c} onClick={() => setPdfHeaderBg(c)} style={{
                         width: 22, height: 22, borderRadius: 4, border: pdfHeaderBg === c ? '3px solid white' : '2px solid rgba(255,255,255,0.3)',
@@ -3146,7 +3147,7 @@
                   <span style={{ color: 'rgba(255,255,255,0.3)' }}>|</span>
                   
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>📏 글씨:</span>
+                    <span style={{ fontSize: 12, color: '#4B5563' }}>📏 글씨:</span>
                     {[
                       { scale: 0.85, label: '작게' },
                       { scale: 1, label: '보통' },
@@ -3513,7 +3514,7 @@
             return (
               <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.95)', zIndex: 9999, display: 'flex', flexDirection: 'column' }}>
                 {/* 상단 툴바 */}
-                <div style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(30,30,50,0.95)', borderBottom: '1px solid rgba(255,255,255,0.1)' }} onClick={e => e.stopPropagation()}>
+                <div style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12, background: '#1F2937', borderBottom: '1px solid #374151' }} onClick={e => e.stopPropagation()}>
                   {viewerImage.type === 'issue' ? (
                     <>
                       <span style={{ color: 'white', fontSize: 14, fontWeight: 600, marginRight: 8 }}>🖊️ 주석 도구</span>
@@ -3530,7 +3531,7 @@
                         }}>{t.icon} {t.label}</button>
                       ))}
                       
-                      <span style={{ color: 'rgba(255,255,255,0.5)', margin: '0 4px' }}>|</span>
+                      <span style={{ color: '#9CA3AF', margin: '0 4px' }}>|</span>
                       
                       {['#ff0000', '#00ff00', '#ffff00', '#00bfff', '#ffffff'].map(c => (
                         <button key={c} onClick={() => setAnnotColor(c)} style={{
@@ -3539,7 +3540,7 @@
                         }} />
                       ))}
                       
-                      <span style={{ color: 'rgba(255,255,255,0.5)', margin: '0 4px' }}>|</span>
+                      <span style={{ color: '#9CA3AF', margin: '0 4px' }}>|</span>
                       
                       {/* 두께 선택 */}
                       {[
@@ -3557,7 +3558,7 @@
                         </button>
                       ))}
                       
-                      <span style={{ color: 'rgba(255,255,255,0.5)', margin: '0 4px' }}>|</span>
+                      <span style={{ color: '#9CA3AF', margin: '0 4px' }}>|</span>
                       
                       {/* 실선/점선 토글 */}
                       <button onClick={() => setAnnotDashed(false)} title="실선" style={{
@@ -3571,7 +3572,7 @@
                         color: annotDashed ? 'white' : 'rgba(255,255,255,0.8)'
                       }}>â"…â"…</button>
                       
-                      <span style={{ color: 'rgba(255,255,255,0.5)', margin: '0 4px' }}>|</span>
+                      <span style={{ color: '#9CA3AF', margin: '0 4px' }}>|</span>
                       
                       <button onClick={() => setAnnotShapes(s => s.slice(0, -1))} disabled={annotShapes.length === 0} style={{
                         padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13,
