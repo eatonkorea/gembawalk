@@ -98,6 +98,9 @@
             if (data.settings.adminPassword) {
               setAdminPw(data.settings.adminPassword);
             }
+            if (data.settings.autoRemindEnabled !== undefined) {
+              setAutoRemindEnabled(data.settings.autoRemindEnabled);
+            }
           }
         } catch (error) {
           console.error('데이터 로드 실패:', error);
@@ -250,10 +253,11 @@
       const annotImgRef = React.useRef(null);
       
       // 리마인드 탭 상태
-      const [remindSelectedIssues, setRemindSelectedIssues] = useState({});  // { 부서명: [issueId, ...] }
       const [remindSelectedManagers, setRemindSelectedManagers] = useState({});  // { 부서명: [managerEmail, ...] } - 받는 사람
       const [remindSelectedCC, setRemindSelectedCC] = useState({});  // { 부서명: [managerEmail, ...] } - CC
       const [sendingEmail, setSendingEmail] = useState(false);
+      const [autoRemindEnabled, setAutoRemindEnabled] = useState(false); // 자동 발송 활성화
+      const [bulkTargetDate, setBulkTargetDate] = useState(''); // 일괄 Target Date 변경용
 
       const styles = {
         container: { minHeight: '100vh', background: '#F3F4F6', color: '#1F2937', padding: isMobile ? 12 : 24 },
@@ -467,6 +471,44 @@
         } catch (error) {
           console.error('사진 업로드 실패:', error);
           alert('사진 업로드에 실패했습니다.');
+        }
+        setIsSaving(false);
+        setSavingMessage('');
+      };
+
+      // 사진 개별 삭제 (지적사진/조치사진 공용)
+      const deletePhoto = async (issueId, field, photoIndex) => {
+        if (!confirm('이 사진을 삭제하시겠습니까?')) return;
+        
+        setIsSaving(true);
+        setSavingMessage('🗑️ 사진 삭제 중...');
+        try {
+          const issue = issues.find(i => i.id === issueId);
+          const photoUrl = issue[field][photoIndex];
+          
+          // Google Drive에서 사진 삭제
+          const match = photoUrl.match(/\/d\/([^\/\?]+)/);
+          if (match && match[1]) {
+            await fetch(API_URL, {
+              method: 'POST',
+              body: JSON.stringify({ action: 'deletePhoto', fileId: match[1] })
+            });
+          }
+          
+          // 로컬 상태에서 제거
+          const newPhotos = issue[field].filter((_, i) => i !== photoIndex);
+          const updatedIssues = issues.map(i => i.id === issueId ? { ...i, [field]: newPhotos } : i);
+          setIssues(updatedIssues);
+          
+          // Google Sheets 업데이트
+          const updatedIssue = updatedIssues.find(i => i.id === issueId);
+          await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'updateIssue', issue: updatedIssue })
+          });
+        } catch (error) {
+          console.error('사진 삭제 실패:', error);
+          alert('사진 삭제에 실패했습니다.');
         }
         setIsSaving(false);
         setSavingMessage('');
@@ -1517,7 +1559,7 @@
             <>
               <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'flex-start', marginBottom: 24, marginTop: 24, gap: 16 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? 10 : 16, flex: 1 }}>
-                  <div style={styles.statCard}><div style={styles.statLabel}>ì "ì²´</div><div style={styles.statValue('#0066FF')}>{issues.length}</div></div>
+                  <div style={styles.statCard}><div style={styles.statLabel}>전체</div><div style={styles.statValue('#0066FF')}>{issues.length}</div></div>
                   <div style={styles.statCard}><div style={styles.statLabel}>Ongoing</div><div style={styles.statValue('#f59e0b')}>{issues.filter(i => i.status === 'Ongoing').length}</div></div>
                   <div style={styles.statCard}><div style={styles.statLabel}>Under Review</div><div style={styles.statValue('#0066FF')}>{issues.filter(i => i.status === 'Under Review').length}</div></div>
                   <div style={styles.statCard}><div style={styles.statLabel}>Complete</div><div style={styles.statValue('#10b981')}>{issues.filter(i => i.status === 'Complete').length}</div></div>
@@ -1527,10 +1569,45 @@
 
               {selectedIds.length > 0 && (
                 <div style={styles.actionBar}>
-                  <span style={{ color: '#0066FF', fontSize: 14 }}>{selectedIds.length}개 선택됨</span>
+                  <span style={{ color: '#0066FF', fontSize: 14, fontWeight: 600 }}>{selectedIds.length}개 선택됨</span>
                   {selectedIds.length === 2 && <button style={{...styles.btnPrimary, padding: '8px 16px', fontSize: 13}} onClick={mergeIssues}>🔗 병합</button>}
                   <button style={{...styles.btnDanger, padding: '8px 16px', fontSize: 13}} onClick={deleteSelected}>🗑️ 삭제</button>
-                  <button style={{...styles.btnSecondary, padding: '8px 16px', fontSize: 13}} onClick={() => setSelectedIds([])}>선택 해제</button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+                    <span style={{ fontSize: 12, color: '#6B7280' }}>Target Date 일괄변경:</span>
+                    <input type="date" value={bulkTargetDate} onChange={e => setBulkTargetDate(e.target.value)} style={{...styles.inlineInput, width: 150, marginBottom: 0, padding: '6px 8px'}} />
+                    <button 
+                      style={{...styles.btnPrimary, padding: '8px 16px', fontSize: 13, opacity: bulkTargetDate ? 1 : 0.5}} 
+                      disabled={!bulkTargetDate}
+                      onClick={async () => {
+                        if (!bulkTargetDate) return;
+                        if (!confirm(`선택한 ${selectedIds.length}건의 Target Date를 ${bulkTargetDate}로 변경하시겠습니까?`)) return;
+                        setIsSaving(true);
+                        setSavingMessage('📅 Target Date 변경 중...');
+                        try {
+                          const updatedIssues = issues.map(issue => 
+                            selectedIds.includes(issue.id) ? { ...issue, targetDate: bulkTargetDate } : issue
+                          );
+                          setIssues(updatedIssues);
+                          for (const id of selectedIds) {
+                            const updatedIssue = updatedIssues.find(i => i.id === id);
+                            await fetch(API_URL, {
+                              method: 'POST',
+                              body: JSON.stringify({ action: 'updateIssue', issue: updatedIssue })
+                            });
+                          }
+                          alert(`${selectedIds.length}건의 Target Date가 변경되었습니다.`);
+                          setBulkTargetDate('');
+                          setSelectedIds([]);
+                        } catch (error) {
+                          console.error('일괄 변경 실패:', error);
+                          alert('일괄 변경에 실패했습니다.');
+                        }
+                        setIsSaving(false);
+                        setSavingMessage('');
+                      }}
+                    >📅 적용</button>
+                  </div>
+                  <button style={{...styles.btnSecondary, padding: '8px 16px', fontSize: 13}} onClick={() => { setSelectedIds([]); setBulkTargetDate(''); }}>선택 해제</button>
                 </div>
               )}
 
@@ -1543,21 +1620,21 @@
                       <th style={{...styles.th, width: 90}}>
                         <div>주관</div>
                         <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 4 }} value={mainFilters.supervisor} onChange={e => setMainFilters({...mainFilters, supervisor: e.target.value})}>
-                          <option value="">ì "ì²´</option>
+                          <option value="">전체</option>
                           {[...new Set(issues.map(i => i.supervisor).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       </th>
                       <th style={{...styles.th, width: 90}}>
                         <div>부서</div>
                         <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 4 }} value={mainFilters.department} onChange={e => setMainFilters({...mainFilters, department: e.target.value})}>
-                          <option value="">ì "ì²´</option>
+                          <option value="">전체</option>
                           {[...new Set(issues.map(i => i.department).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       </th>
                       <th style={{...styles.th, width: 90}}>
                         <div>담당자</div>
                         <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 4 }} value={mainFilters.manager} onChange={e => setMainFilters({...mainFilters, manager: e.target.value})}>
-                          <option value="">ì "ì²´</option>
+                          <option value="">전체</option>
                           {[...new Set(issues.map(i => i.manager).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       </th>
@@ -1568,7 +1645,7 @@
                       <th style={{...styles.th, width: 130}}>
                         <div>상태</div>
                         <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 4 }} value={mainFilters.status} onChange={e => setMainFilters({...mainFilters, status: e.target.value})}>
-                          <option value="">ì "ì²´</option>
+                          <option value="">전체</option>
                           <option value="Ongoing">Ongoing</option>
                           <option value="Under Review">Under Review</option>
                           <option value="Complete">Complete</option>
@@ -1648,7 +1725,12 @@
                         <td style={styles.td}><textarea style={{...styles.inlineInput, minHeight: 60}} value={issue.description} onChange={(e) => updateIssueField(issue.id, 'description', e.target.value)} /></td>
                         <td style={styles.td}>
                           <div style={styles.photoGrid}>
-                            {issue.issuePhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "issue", index: i})} />)}
+                            {issue.issuePhotos.map((p, i) => (
+                              <div key={i} style={{ position: 'relative', display: 'inline-block' }}>
+                                <img src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "issue", index: i})} />
+                                <button onClick={(e) => { e.stopPropagation(); deletePhoto(issue.id, 'issuePhotos', i); }} style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: '#EF4444', color: 'white', border: '2px solid white', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, lineHeight: 1, boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}>✕</button>
+                              </div>
+                            ))}
                           </div>
                           <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: '#F3F4F6', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
                             📷 추가
@@ -1658,7 +1740,12 @@
                         <td style={styles.td}><textarea style={{...styles.inlineInput, minHeight: 60}} value={issue.actionContent} onChange={(e) => updateIssueField(issue.id, 'actionContent', e.target.value)} /></td>
                         <td style={styles.td}>
                           <div style={styles.photoGrid}>
-                            {issue.actionPhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "action", index: i})} />)}
+                            {issue.actionPhotos.map((p, i) => (
+                              <div key={i} style={{ position: 'relative', display: 'inline-block' }}>
+                                <img src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "action", index: i})} />
+                                <button onClick={(e) => { e.stopPropagation(); deletePhoto(issue.id, 'actionPhotos', i); }} style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: '#EF4444', color: 'white', border: '2px solid white', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, lineHeight: 1, boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}>✕</button>
+                              </div>
+                            ))}
                           </div>
                           <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: '#F3F4F6', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
                             📷 추가
@@ -1713,7 +1800,50 @@
           {/* 리마인드 탭 */}
           {activeTab === 'remind' && (
             <div style={{ marginTop: 24 }}>
-              <h3 style={{ marginBottom: 20, color: '#ef4444', fontSize: isMobile ? 16 : 18 }}>📧 Target Date 초과 항목</h3>
+              {/* 자동 발송 설정 */}
+              <div style={{ background: 'white', borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 20, border: '1px solid #E5E7EB', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: isMobile ? 16 : 18, color: '#1F2937' }}>📧 리마인드 자동 발송</h3>
+                    <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>매월 1일, 15일에 Target Date 초과 항목을 부서별로 자동 발송합니다</div>
+                  </div>
+                  <button
+                    style={{
+                      ...styles.btnPrimary,
+                      padding: '10px 24px',
+                      background: autoRemindEnabled 
+                        ? 'linear-gradient(135deg, #ef4444, #dc2626)' 
+                        : 'linear-gradient(135deg, #10b981, #059669)',
+                      boxShadow: autoRemindEnabled 
+                        ? '0 2px 8px rgba(239,68,68,0.3)'
+                        : '0 2px 8px rgba(16,185,129,0.3)'
+                    }}
+                    onClick={async () => {
+                      const newVal = !autoRemindEnabled;
+                      setAutoRemindEnabled(newVal);
+                      try {
+                        await fetch(API_URL, {
+                          method: 'POST',
+                          body: JSON.stringify({ action: 'updateSettings', settings: { autoRemindEnabled: newVal } })
+                        });
+                        alert(newVal ? '자동 발송이 시작되었습니다.\n매월 1일, 15일에 발송됩니다.' : '자동 발송이 중지되었습니다.');
+                      } catch (e) {
+                        console.error('설정 저장 실패:', e);
+                      }
+                    }}
+                  >
+                    {autoRemindEnabled ? '⏹️ 자동 발송 중지' : '▶️ 자동 발송 시작'}
+                  </button>
+                </div>
+                {autoRemindEnabled && (
+                  <div style={{ marginTop: 12, padding: '8px 16px', background: '#ECFDF5', borderRadius: 8, border: '1px solid #6EE7B7', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>✅</span>
+                    <span style={{ fontSize: 13, color: '#059669', fontWeight: 600 }}>자동 발송 활성화 중 — 매월 1일, 15일 발송</span>
+                  </div>
+                )}
+              </div>
+
+              <h3 style={{ marginBottom: 16, color: '#ef4444', fontSize: isMobile ? 16 : 18 }}>🚨 Target Date 초과 항목</h3>
               
               {(() => {
                 // Target Date 지난 이슈만 필터링 (Complete 제외)
@@ -1745,143 +1875,89 @@
                   );
                 }
                 
-                // 발송 가능한 부서 수 계산
                 const deptList = Object.keys(groupedByDept);
+                // 발송 가능 여부: 각 부서에 받는 사람이 1명 이상
                 const readyDepts = deptList.filter(dept => {
-                  const selectedIssues = remindSelectedIssues[dept] || [];
                   const selectedManagers = remindSelectedManagers[dept] || [];
-                  return selectedIssues.length > 0 && selectedManagers.length > 0;
+                  return selectedManagers.length > 0;
                 });
-                
-                // 전체 선택된 이슈 수
-                const totalSelectedIssues = Object.values(remindSelectedIssues).flat().length;
                 
                 return (
                   <>
                     {deptList.map(dept => {
                       const deptIssues = groupedByDept[dept];
                       const deptManagers = managers[dept] || [];
-                      const selectedIssuesForDept = remindSelectedIssues[dept] || [];
                       const selectedManagersForDept = remindSelectedManagers[dept] || [];
                       const selectedCCForDept = remindSelectedCC[dept] || [];
                       
                       return (
                         <div key={dept} style={{ 
-                          background: '#FEF2F2', 
+                          background: 'white', 
                           borderRadius: 12, 
                           padding: isMobile ? 16 : 24, 
                           marginBottom: 20,
-                          border: '1px solid rgba(239, 68, 68, 0.3)'
+                          border: '1px solid #FCA5A5',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
                         }}>
                           {/* 부서 헤더 */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                              <h4 style={{ margin: 0, color: '#ef4444', fontSize: isMobile ? 16 : 18 }}>{dept}</h4>
-                              <span style={{ 
-                                background: 'rgba(239, 68, 68, 0.3)', 
-                                padding: '4px 12px', 
-                                borderRadius: 20, 
-                                fontSize: 12, 
-                                color: '#fca5a5' 
-                              }}>
-                                {deptIssues.length}건 지연
-                              </span>
-                            </div>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#4B5563' }}>
-                              <input 
-                                type="checkbox" 
-                                checked={selectedIssuesForDept.length === deptIssues.length && deptIssues.length > 0}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setRemindSelectedIssues({...remindSelectedIssues, [dept]: deptIssues.map(i => i.id)});
-                                  } else {
-                                    setRemindSelectedIssues({...remindSelectedIssues, [dept]: []});
-                                  }
-                                }}
-                                style={{ width: 16, height: 16, accentColor: '#ef4444' }}
-                              />
-                              전체 선택
-                            </label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                            <h4 style={{ margin: 0, color: '#DC2626', fontSize: isMobile ? 16 : 18 }}>{dept}</h4>
+                            <span style={{ background: '#FEE2E2', padding: '4px 12px', borderRadius: 20, fontSize: 12, color: '#DC2626', fontWeight: 600 }}>
+                              {deptIssues.length}건 지연
+                            </span>
                           </div>
                           
-                          {/* 이슈 목록 */}
-                          <div style={{ marginBottom: 16 }}>
-                            {deptIssues.map(issue => {
-                              const targetDate = formatDate(issue.targetDate) || formatDate(issue.date);
-                              const daysPassed = Math.floor((new Date() - new Date(issue.targetDate || issue.date)) / (1000 * 60 * 60 * 24));
-                              
-                              return (
-                                <div key={issue.id} style={{ 
-                                  display: 'flex', 
-                                  alignItems: 'flex-start', 
-                                  gap: 12, 
-                                  padding: 12, 
-                                  background: 'rgba(0,0,0,0.2)', 
-                                  borderRadius: 8, 
-                                  marginBottom: 8 
-                                }}>
-                                  <input 
-                                    type="checkbox" 
-                                    checked={selectedIssuesForDept.includes(issue.id)}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        setRemindSelectedIssues({...remindSelectedIssues, [dept]: [...selectedIssuesForDept, issue.id]});
-                                      } else {
-                                        setRemindSelectedIssues({...remindSelectedIssues, [dept]: selectedIssuesForDept.filter(id => id !== issue.id)});
-                                      }
-                                    }}
-                                    style={{ width: 18, height: 18, accentColor: '#ef4444', marginTop: 2 }}
-                                  />
-                                  <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 13, marginBottom: 4 }}>{issue.description || '(내용 없음)'}</div>
-                                    <div style={{ fontSize: 11, color: '#9CA3AF' }}>
-                                      접수일: {formatDate(issue.date)} | Target: {targetDate} 
-                                      <span style={{ color: '#ef4444', marginLeft: 8 }}>({daysPassed}일 경과)</span>
-                                      {issue.manager && <span> | 담당: {issue.manager}</span>}
-                                    </div>
-                                  </div>
-                                  {issue.issuePhotos && issue.issuePhotos.length > 0 && (
-                                    <img 
-                                      src={issue.issuePhotos[0]} 
-                                      style={{ width: 50, height: 50, objectFit: 'cover', borderRadius: 4, cursor: 'pointer' }}
-                                      onClick={() => setViewerImage({src: issue.issuePhotos[0], issueId: issue.id, type: "issue", index: 0})}
-                                      alt=""
-                                    />
-                                  )}
-                                </div>
-                              );
-                            })}
+                          {/* 이슈 전체 목록 테이블 */}
+                          <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                              <thead>
+                                <tr style={{ background: '#FEF2F2' }}>
+                                  <th style={{ padding: '8px 10px', border: '1px solid #FECACA', textAlign: 'left', fontWeight: 600, color: '#991B1B', whiteSpace: 'nowrap' }}>접수일</th>
+                                  <th style={{ padding: '8px 10px', border: '1px solid #FECACA', textAlign: 'left', fontWeight: 600, color: '#991B1B', whiteSpace: 'nowrap' }}>Target Date</th>
+                                  <th style={{ padding: '8px 10px', border: '1px solid #FECACA', textAlign: 'center', fontWeight: 600, color: '#991B1B', whiteSpace: 'nowrap' }}>경과일</th>
+                                  <th style={{ padding: '8px 10px', border: '1px solid #FECACA', textAlign: 'left', fontWeight: 600, color: '#991B1B' }}>내용</th>
+                                  <th style={{ padding: '8px 10px', border: '1px solid #FECACA', textAlign: 'left', fontWeight: 600, color: '#991B1B', whiteSpace: 'nowrap' }}>담당자</th>
+                                  <th style={{ padding: '8px 10px', border: '1px solid #FECACA', textAlign: 'center', fontWeight: 600, color: '#991B1B', whiteSpace: 'nowrap' }}>상태</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {deptIssues.map(issue => {
+                                  const daysPassed = Math.floor((new Date() - new Date(issue.targetDate || issue.date)) / (1000 * 60 * 60 * 24));
+                                  return (
+                                    <tr key={issue.id} style={{ background: daysPassed > 90 ? '#FEF2F2' : 'white' }}>
+                                      <td style={{ padding: '8px 10px', border: '1px solid #FDE8E8', whiteSpace: 'nowrap' }}>{formatDate(issue.date)}</td>
+                                      <td style={{ padding: '8px 10px', border: '1px solid #FDE8E8', whiteSpace: 'nowrap' }}>{formatDate(issue.targetDate)}</td>
+                                      <td style={{ padding: '8px 10px', border: '1px solid #FDE8E8', textAlign: 'center', color: daysPassed > 90 ? '#DC2626' : '#EA580C', fontWeight: 600 }}>{daysPassed}일</td>
+                                      <td style={{ padding: '8px 10px', border: '1px solid #FDE8E8', maxWidth: 300 }}>{issue.description || '(내용 없음)'}</td>
+                                      <td style={{ padding: '8px 10px', border: '1px solid #FDE8E8', whiteSpace: 'nowrap' }}>{issue.manager || '-'}</td>
+                                      <td style={{ padding: '8px 10px', border: '1px solid #FDE8E8', textAlign: 'center' }}>
+                                        <span style={styles.statusBadge(issue.status)}>{issue.status}</span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
                           </div>
                           
                           {/* 받는 사람 선택 */}
                           <div style={{ marginBottom: 12, padding: 12, background: '#F9FAFB', borderRadius: 8 }}>
                             <div style={{ fontSize: 13, color: '#4B5563', marginBottom: 8 }}>📬 받는 사람 - 부서 담당자:</div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                              {/* 부서 담당자 */}
                               {deptManagers.length === 0 && admins.length === 0 ? (
                                 <span style={{ fontSize: 12, color: '#9CA3AF' }}>등록된 담당자가 없습니다. 설정에서 추가하세요.</span>
                               ) : (
                                 <>
                                   {deptManagers.map(mgr => (
                                     <label key={mgr.email} style={{ 
-                                      display: 'flex', 
-                                      alignItems: 'center', 
-                                      gap: 6, 
-                                      padding: '6px 12px', 
+                                      display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', 
                                       background: selectedManagersForDept.includes(mgr.email) ? '#CCE0FF' : '#F9FAFB', 
-                                      borderRadius: 20, 
-                                      cursor: 'pointer',
-                                      fontSize: 12
+                                      borderRadius: 20, cursor: 'pointer', fontSize: 12
                                     }}>
-                                      <input 
-                                        type="checkbox" 
-                                        checked={selectedManagersForDept.includes(mgr.email)}
+                                      <input type="checkbox" checked={selectedManagersForDept.includes(mgr.email)}
                                         onChange={(e) => {
-                                          if (e.target.checked) {
-                                            setRemindSelectedManagers({...remindSelectedManagers, [dept]: [...selectedManagersForDept, mgr.email]});
-                                          } else {
-                                            setRemindSelectedManagers({...remindSelectedManagers, [dept]: selectedManagersForDept.filter(em => em !== mgr.email)});
-                                          }
+                                          if (e.target.checked) setRemindSelectedManagers({...remindSelectedManagers, [dept]: [...selectedManagersForDept, mgr.email]});
+                                          else setRemindSelectedManagers({...remindSelectedManagers, [dept]: selectedManagersForDept.filter(em => em !== mgr.email)});
                                         }}
                                         style={{ width: 14, height: 14, accentColor: '#0066FF' }}
                                       />
@@ -1896,32 +1972,20 @@
                             </div>
                           </div>
                           
-                          {/* CC 선택 - 관리자만 */}
+                          {/* CC 선택 */}
                           <div style={{ padding: 12, background: '#F9FAFB', borderRadius: 8 }}>
                             <div style={{ fontSize: 13, color: '#4B5563', marginBottom: 8 }}>📋 CC (참조) - 👑 관리자:</div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                              {/* 관리자 목록만 */}
                               {admins.map(admin => (
                                 <label key={admin.email + '_cc'} style={{ 
-                                  display: 'flex', 
-                                  alignItems: 'center', 
-                                  gap: 6, 
-                                  padding: '6px 12px', 
+                                  display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', 
                                   background: selectedCCForDept.includes(admin.email) ? 'rgba(234, 179, 8, 0.3)' : 'rgba(234, 179, 8, 0.1)', 
-                                  borderRadius: 20, 
-                                  cursor: 'pointer',
-                                  fontSize: 12,
-                                  border: '1px solid rgba(234, 179, 8, 0.3)'
+                                  borderRadius: 20, cursor: 'pointer', fontSize: 12, border: '1px solid rgba(234, 179, 8, 0.3)'
                                 }}>
-                                  <input 
-                                    type="checkbox" 
-                                    checked={selectedCCForDept.includes(admin.email)}
+                                  <input type="checkbox" checked={selectedCCForDept.includes(admin.email)}
                                     onChange={(e) => {
-                                      if (e.target.checked) {
-                                        setRemindSelectedCC({...remindSelectedCC, [dept]: [...selectedCCForDept, admin.email]});
-                                      } else {
-                                        setRemindSelectedCC({...remindSelectedCC, [dept]: selectedCCForDept.filter(em => em !== admin.email)});
-                                      }
+                                      if (e.target.checked) setRemindSelectedCC({...remindSelectedCC, [dept]: [...selectedCCForDept, admin.email]});
+                                      else setRemindSelectedCC({...remindSelectedCC, [dept]: selectedCCForDept.filter(em => em !== admin.email)});
                                     }}
                                     style={{ width: 14, height: 14, accentColor: '#eab308' }}
                                   />
@@ -1947,8 +2011,10 @@
                         background: readyDepts.length > 0 
                           ? 'linear-gradient(135deg, #ef4444, #dc2626)' 
                           : '#F3F4F6',
+                        color: readyDepts.length > 0 ? 'white' : '#9CA3AF',
                         cursor: readyDepts.length > 0 ? 'pointer' : 'not-allowed',
-                        opacity: readyDepts.length > 0 ? 1 : 0.5
+                        opacity: readyDepts.length > 0 ? 1 : 0.5,
+                        boxShadow: readyDepts.length > 0 ? '0 4px 12px rgba(239,68,68,0.3)' : 'none'
                       }}
                       disabled={readyDepts.length === 0 || sendingEmail}
                       onClick={async () => {
@@ -1961,11 +2027,8 @@
                         try {
                           for (const dept of readyDepts) {
                             const deptIssues = groupedByDept[dept];
-                            const selectedIssuesForDept = remindSelectedIssues[dept] || [];
                             const selectedManagersForDept = remindSelectedManagers[dept] || [];
                             const selectedCCForDept = remindSelectedCC[dept] || [];
-                            
-                            const selectedIssueData = deptIssues.filter(i => selectedIssuesForDept.includes(i.id));
                             
                             try {
                               const response = await fetch(API_URL, {
@@ -1975,7 +2038,7 @@
                                   department: dept,
                                   recipients: selectedManagersForDept,
                                   cc: selectedCCForDept,
-                                  issues: selectedIssueData.map(issue => ({
+                                  issues: deptIssues.map(issue => ({
                                     date: formatDate(issue.date),
                                     targetDate: formatDate(issue.targetDate),
                                     description: issue.description || '',
@@ -1987,11 +2050,8 @@
                               });
                               
                               const result = await response.json();
-                              if (result.success) {
-                                successCount++;
-                              } else {
-                                failCount++;
-                              }
+                              if (result.success) successCount++;
+                              else failCount++;
                             } catch (error) {
                               failCount++;
                             }
@@ -2003,8 +2063,6 @@
                             alert(`발송 완료: ${successCount}개 부서 성공, ${failCount}개 부서 실패`);
                           }
                           
-                          // 선택 초기화
-                          setRemindSelectedIssues({});
                           setRemindSelectedManagers({});
                           setRemindSelectedCC({});
                           
@@ -2015,12 +2073,12 @@
                         setSendingEmail(false);
                       }}
                     >
-                      {sendingEmail ? '📧 발송 중...' : `📧 리마인드 메일 일괄 발송 (${readyDepts.length}개 부서, ${totalSelectedIssues}건)`}
+                      {sendingEmail ? '📧 발송 중...' : `📧 리마인드 메일 일괄 발송 (${readyDepts.length}개 부서, ${overdueIssues.length}건)`}
                     </button>
                     
                     {readyDepts.length === 0 && (
                       <div style={{ marginTop: 12, fontSize: 12, color: '#9CA3AF', textAlign: 'center' }}>
-                        * 각 부서에서 이슈와 받는 사람을 선택해주세요
+                        * 각 부서에서 받는 사람을 선택해주세요
                       </div>
                     )}
                   </>
@@ -2066,7 +2124,7 @@
                     return (
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? 10 : 16, marginBottom: 24 }}>
                         <div style={{ background: '#F0F6FF', border: '1px solid #CCE0FF', borderRadius: 12, padding: isMobile ? '12px 14px' : '16px 20px', textAlign: 'center' }}>
-                          <div style={{ fontSize: isMobile ? 11 : 13, color: '#6B7280', marginBottom: isMobile ? 4 : 6 }}>ì "ì²´</div>
+                          <div style={{ fontSize: isMobile ? 11 : 13, color: '#6B7280', marginBottom: isMobile ? 4 : 6 }}>전체</div>
                           <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: 'white' }}>{deptIssues.length}</div>
                         </div>
                         <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: 12, padding: isMobile ? '12px 14px' : '16px 20px', textAlign: 'center' }}>
@@ -2172,7 +2230,14 @@
                             <div style={{ marginBottom: 12 }}>
                               <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 6 }}>조치사진</div>
                               <div style={styles.photoGrid}>
-                                {issue.actionPhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "action", index: i})} />)}
+                                {issue.actionPhotos.map((p, i) => (
+                                  <div key={i} style={{ position: 'relative', display: 'inline-block' }}>
+                                    <img src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "action", index: i})} />
+                                    {issue.status === 'Ongoing' && (
+                                      <button onClick={(e) => { e.stopPropagation(); deletePhoto(issue.id, 'actionPhotos', i); }} style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: '#EF4444', color: 'white', border: '2px solid white', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, lineHeight: 1, boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}>✕</button>
+                                    )}
+                                  </div>
+                                ))}
                               </div>
                               {issue.status === 'Ongoing' && (
                                 <label style={{ display: 'inline-block', marginTop: 8, padding: '6px 12px', background: '#F3F4F6', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>
@@ -2197,7 +2262,7 @@
                                   disabled={!canReport}
                                   onClick={() => openReportModal(issue.id)}
                                 >
-                                  ë³´ê³ 
+                                  보고
                                 </button>
                               )}
                             </div>
@@ -2217,14 +2282,14 @@
                           <th style={{...styles.th, width: 100}}>
                             <div>주관</div>
                             <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 4 }} value={actionFilters.supervisor} onChange={e => setActionFilters({...actionFilters, supervisor: e.target.value})}>
-                              <option value="">ì "ì²´</option>
+                              <option value="">전체</option>
                               {[...new Set(issues.filter(i => i.department === selectedDeptForAction).map(i => i.supervisor).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                             </select>
                           </th>
                           <th style={{...styles.th, width: 120}}>
                             <div>담당자</div>
                             <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 4 }} value={actionFilters.manager} onChange={e => setActionFilters({...actionFilters, manager: e.target.value})}>
-                              <option value="">ì "ì²´</option>
+                              <option value="">전체</option>
                               {[...new Set(issues.filter(i => i.department === selectedDeptForAction).map(i => i.manager).filter(Boolean))].sort().map(v => <option key={v} value={v}>{v}</option>)}
                             </select>
                           </th>
@@ -2235,14 +2300,14 @@
                           <th style={{...styles.th, width: 120}}>
                             <div>상태</div>
                             <select style={{ width: '100%', marginTop: 4, padding: '2px 4px', fontSize: 10, background: 'white', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 4 }} value={actionFilters.status} onChange={e => setActionFilters({...actionFilters, status: e.target.value})}>
-                              <option value="">ì "ì²´</option>
+                              <option value="">전체</option>
                               <option value="Ongoing">Ongoing</option>
                               <option value="Under Review">Under Review</option>
                               <option value="Complete">Complete</option>
                             </select>
                           </th>
                           <th style={{...styles.th, width: 100}}>Target Date</th>
-                          <th style={{...styles.th, width: 90}}>ë³´ê³ </th>
+                          <th style={{...styles.th, width: 90}}>보고</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2297,7 +2362,14 @@
                             </td>
                             <td style={styles.td}>
                               <div style={styles.photoGrid}>
-                                {issue.actionPhotos.map((p, i) => <img key={i} src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "action", index: i})} />)}
+                                {issue.actionPhotos.map((p, i) => (
+                                  <div key={i} style={{ position: 'relative', display: 'inline-block' }}>
+                                    <img src={p} style={styles.photoThumb} alt="" onClick={() => setViewerImage({src: p, issueId: issue.id, type: "action", index: i})} />
+                                    {issue.status === 'Ongoing' && (
+                                      <button onClick={(e) => { e.stopPropagation(); deletePhoto(issue.id, 'actionPhotos', i); }} style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: '#EF4444', color: 'white', border: '2px solid white', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, lineHeight: 1, boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}>✕</button>
+                                    )}
+                                  </div>
+                                ))}
                               </div>
                               {issue.status === 'Ongoing' && (
                                 <label style={{ display: 'inline-block', marginTop: 8, padding: '4px 8px', background: '#F3F4F6', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
@@ -2336,7 +2408,7 @@
                                       disabled={!canReport}
                                       onClick={() => openReportModal(issue.id)}
                                     >
-                                      ë³´ê³ 
+                                      보고
                                     </button>
                                   );
                                 }
