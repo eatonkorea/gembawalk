@@ -257,7 +257,7 @@
       const [remindSelectedCC, setRemindSelectedCC] = useState({});  // { 부서명: [managerEmail, ...] } - CC
       const [sendingEmail, setSendingEmail] = useState(false);
       const [autoRemindEnabled, setAutoRemindEnabled] = useState(false); // 자동 발송 활성화
-      const [bulkTargetDate, setBulkTargetDate] = useState(''); // 일괄 Target Date 변경용
+      const [bulkDate, setBulkDate] = useState(''); // 일괄 일자 변경용
 
       const styles = {
         container: { minHeight: '100vh', background: '#F3F4F6', color: '#1F2937', padding: isMobile ? 12 : 24 },
@@ -1573,19 +1573,20 @@
                   {selectedIds.length === 2 && <button style={{...styles.btnPrimary, padding: '8px 16px', fontSize: 13}} onClick={mergeIssues}>🔗 병합</button>}
                   <button style={{...styles.btnDanger, padding: '8px 16px', fontSize: 13}} onClick={deleteSelected}>🗑️ 삭제</button>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-                    <span style={{ fontSize: 12, color: '#6B7280' }}>Target Date 일괄변경:</span>
-                    <input type="date" value={bulkTargetDate} onChange={e => setBulkTargetDate(e.target.value)} style={{...styles.inlineInput, width: 150, marginBottom: 0, padding: '6px 8px'}} />
+                    <span style={{ fontSize: 12, color: '#6B7280' }}>일자 일괄변경:</span>
+                    <input type="date" value={bulkDate} onChange={e => setBulkDate(e.target.value)} style={{...styles.inlineInput, width: 150, marginBottom: 0, padding: '6px 8px'}} />
                     <button 
-                      style={{...styles.btnPrimary, padding: '8px 16px', fontSize: 13, opacity: bulkTargetDate ? 1 : 0.5}} 
-                      disabled={!bulkTargetDate}
+                      style={{...styles.btnPrimary, padding: '8px 16px', fontSize: 13, opacity: bulkDate ? 1 : 0.5}} 
+                      disabled={!bulkDate}
                       onClick={async () => {
-                        if (!bulkTargetDate) return;
-                        if (!confirm(`선택한 ${selectedIds.length}건의 Target Date를 ${bulkTargetDate}로 변경하시겠습니까?`)) return;
+                        if (!bulkDate) return;
+                        const newTarget = (() => { const d = new Date(bulkDate); d.setDate(d.getDate() + 30); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); })();
+                        if (!confirm(`선택한 ${selectedIds.length}건의 일자를 ${bulkDate}로 변경하시겠습니까?\n(Target Date: ${newTarget})`)) return;
                         setIsSaving(true);
-                        setSavingMessage('📅 Target Date 변경 중...');
+                        setSavingMessage('📅 일자 변경 중...');
                         try {
                           const updatedIssues = issues.map(issue => 
-                            selectedIds.includes(issue.id) ? { ...issue, targetDate: bulkTargetDate } : issue
+                            selectedIds.includes(issue.id) ? { ...issue, date: bulkDate, targetDate: newTarget } : issue
                           );
                           setIssues(updatedIssues);
                           for (const id of selectedIds) {
@@ -1595,8 +1596,8 @@
                               body: JSON.stringify({ action: 'updateIssue', issue: updatedIssue })
                             });
                           }
-                          alert(`${selectedIds.length}건의 Target Date가 변경되었습니다.`);
-                          setBulkTargetDate('');
+                          alert(`${selectedIds.length}건의 일자가 변경되었습니다.\n(Target Date: ${newTarget})`);
+                          setBulkDate('');
                           setSelectedIds([]);
                         } catch (error) {
                           console.error('일괄 변경 실패:', error);
@@ -1607,7 +1608,7 @@
                       }}
                     >📅 적용</button>
                   </div>
-                  <button style={{...styles.btnSecondary, padding: '8px 16px', fontSize: 13}} onClick={() => { setSelectedIds([]); setBulkTargetDate(''); }}>선택 해제</button>
+                  <button style={{...styles.btnSecondary, padding: '8px 16px', fontSize: 13}} onClick={() => { setSelectedIds([]); setBulkDate(''); }}>선택 해제</button>
                 </div>
               )}
 
